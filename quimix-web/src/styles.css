@@ -534,3 +534,404 @@ input {
     transform: translateY(-6px);
   }
 }
+
+.lab-stage {
+  --mix-a: #a8d5a2;
+  --mix-b: #4ea8d8;
+  --product: #3d9fd6;
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 1rem;
+  padding: 1rem 0.85rem 1.05rem;
+  border-radius: 0.65rem;
+  color: #e8f2ec;
+  background:
+    radial-gradient(420px 180px at 50% 0%, rgba(196, 92, 38, 0.18), transparent 55%),
+    linear-gradient(180deg, #1a4a3c 0%, #0f2a24 100%);
+}
+
+.lab-drops {
+  position: relative;
+  height: 2.4rem;
+}
+
+.lab-drop {
+  position: absolute;
+  top: 0;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  padding: 0 0.28rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #12241e;
+  border: 1px solid rgba(18, 36, 30, 0.2);
+  opacity: 0;
+}
+
+.has-items:not(.is-playing) .lab-drop {
+  opacity: 1;
+  top: 0.35rem;
+}
+
+.is-playing.is-pour .lab-drop,
+.is-playing.is-mix .lab-drop {
+  animation: lab-fall 0.85s ease-in both;
+}
+
+.lab-vessel {
+  position: relative;
+  width: 132px;
+  height: 168px;
+  margin: 0.15rem auto 0.85rem;
+  border: 3px solid rgba(255, 255, 255, 0.55);
+  border-top: 0;
+  border-radius: 0 0 1.15rem 1.15rem;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  box-shadow:
+    inset 0 0 18px rgba(255, 255, 255, 0.18),
+    0 14px 28px rgba(0, 0, 0, 0.28);
+}
+
+.lab-rim {
+  position: absolute;
+  top: 0;
+  left: -8px;
+  right: -8px;
+  height: 10px;
+  border: 3px solid rgba(255, 255, 255, 0.62);
+  border-bottom: 0;
+  border-radius: 0.35rem 0.35rem 0 0;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.lab-liquid {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 0;
+  height: 0%;
+  border-radius: 0 0 0.85rem 0.85rem;
+}
+
+.lab-liquid-mix {
+  background:
+    linear-gradient(160deg, var(--mix-a), var(--mix-b)),
+    repeating-linear-gradient(
+      -18deg,
+      transparent 0 10px,
+      rgba(255, 255, 255, 0.12) 10px 14px
+    );
+  opacity: 0.92;
+}
+
+.lab-liquid-product {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--product) 72%, white), var(--product));
+  opacity: 0;
+}
+
+.has-items:not(.is-playing) .lab-liquid-mix {
+  height: 38%;
+}
+
+.is-playing.is-pour .lab-liquid-mix,
+.is-playing.is-mix .lab-liquid-mix {
+  animation: lab-fill 0.9s ease-out forwards;
+}
+
+.is-playing.is-mix .lab-liquid-mix {
+  animation:
+    lab-fill 0.9s ease-out forwards,
+    lab-swirl 1.4s linear infinite;
+}
+
+.is-playing.is-reveal .lab-liquid-mix {
+  height: 68%;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.is-playing.is-reveal .lab-liquid-product {
+  height: 68%;
+  opacity: 1;
+  animation: lab-settle 1.1s ease-out both;
+}
+
+.theme-water.is-reveal .lab-liquid-product::after {
+  content: "";
+  position: absolute;
+  left: -12%;
+  right: -12%;
+  top: -7px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  animation: lab-wave 2.2s ease-in-out infinite;
+}
+
+.lab-shine {
+  position: absolute;
+  inset: 12% 62% 8% 12%;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent);
+  pointer-events: none;
+}
+
+.lab-bubbles,
+.lab-crystals,
+.lab-steam {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lab-bubble {
+  position: absolute;
+  bottom: 12%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.18);
+  opacity: 0;
+}
+
+.lab-bubble.n1 { left: 22%; }
+.lab-bubble.n2 { left: 38%; width: 6px; height: 6px; }
+.lab-bubble.n3 { left: 52%; }
+.lab-bubble.n4 { left: 66%; width: 5px; height: 5px; }
+.lab-bubble.n5 { left: 30%; }
+.lab-bubble.n6 { left: 58%; width: 7px; height: 7px; }
+.lab-bubble.n7 { left: 44%; }
+
+.theme-water.is-mix .lab-bubble,
+.theme-gas.is-mix .lab-bubble,
+.theme-acid.is-mix .lab-bubble,
+.theme-water.is-reveal .lab-bubble,
+.theme-gas.is-reveal .lab-bubble {
+  animation: lab-bubble 1.6s ease-in infinite;
+}
+
+.lab-bubble.n2 { animation-delay: 0.2s; }
+.lab-bubble.n3 { animation-delay: 0.35s; }
+.lab-bubble.n4 { animation-delay: 0.5s; }
+.lab-bubble.n5 { animation-delay: 0.7s; }
+.lab-bubble.n6 { animation-delay: 0.15s; }
+.lab-bubble.n7 { animation-delay: 0.9s; }
+
+.theme-water.is-reveal .lab-bubble {
+  animation-iteration-count: 2;
+}
+
+.lab-crystals span {
+  position: absolute;
+  bottom: 10%;
+  width: 14px;
+  height: 14px;
+  background: #f7fbff;
+  border: 1px solid rgba(180, 200, 210, 0.9);
+  opacity: 0;
+  transform: rotate(18deg) scale(0.4);
+}
+
+.lab-crystals span:nth-child(1) { left: 22%; }
+.lab-crystals span:nth-child(2) { left: 46%; width: 11px; height: 11px; }
+.lab-crystals span:nth-child(3) { left: 64%; bottom: 16%; }
+
+.theme-salt.is-reveal .lab-crystals span,
+.theme-mineral.is-reveal .lab-crystals span {
+  animation: lab-crystal 0.7s ease-out forwards;
+}
+
+.theme-salt.is-reveal .lab-crystals span:nth-child(2),
+.theme-mineral.is-reveal .lab-crystals span:nth-child(2) { animation-delay: 0.12s; }
+.theme-salt.is-reveal .lab-crystals span:nth-child(3),
+.theme-mineral.is-reveal .lab-crystals span:nth-child(3) { animation-delay: 0.22s; }
+
+.lab-steam span {
+  position: absolute;
+  bottom: 62%;
+  width: 18px;
+  height: 28px;
+  border-radius: 40%;
+  background: rgba(255, 255, 255, 0.18);
+  filter: blur(2px);
+  opacity: 0;
+}
+
+.lab-steam span:nth-child(1) { left: 28%; }
+.lab-steam span:nth-child(2) { left: 46%; }
+.lab-steam span:nth-child(3) { left: 62%; }
+
+.theme-gas.is-reveal .lab-steam span,
+.theme-oxide.is-mix .lab-steam span,
+.theme-organic.is-mix .lab-steam span {
+  animation: lab-steam 1.8s ease-out infinite;
+}
+
+.lab-copy {
+  text-align: center;
+  min-height: 4.5rem;
+}
+
+.lab-glyph {
+  width: 72px;
+  height: 34px;
+  margin: 0 auto 0.35rem;
+  color: var(--product);
+  opacity: 0;
+}
+
+.is-reveal .lab-glyph {
+  opacity: 1;
+  animation: rise 0.45s ease-out both;
+}
+
+.lab-status {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.lab-equation,
+.lab-caption,
+.lab-hint {
+  margin: 0.35rem 0 0;
+  color: #cfe0d8;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.lab-equation {
+  color: #f4faf7;
+  font-weight: 700;
+}
+
+.lab-hint {
+  color: #e3c7b0;
+}
+
+@keyframes lab-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.8);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(42px) scale(0.7);
+  }
+}
+
+@keyframes lab-fill {
+  from {
+    height: 0%;
+  }
+  to {
+    height: 68%;
+  }
+}
+
+@keyframes lab-swirl {
+  0% {
+    filter: hue-rotate(0deg);
+    transform: translateX(0);
+  }
+  50% {
+    filter: hue-rotate(18deg);
+    transform: translateX(4px);
+  }
+  100% {
+    filter: hue-rotate(0deg);
+    transform: translateX(0);
+  }
+}
+
+@keyframes lab-settle {
+  0% {
+    opacity: 0.2;
+    transform: scaleY(0.92);
+    transform-origin: bottom;
+  }
+  100% {
+    opacity: 1;
+    transform: scaleY(1);
+    transform-origin: bottom;
+  }
+}
+
+@keyframes lab-bubble {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.6);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-88px) scale(1);
+  }
+}
+
+@keyframes lab-crystal {
+  to {
+    opacity: 1;
+    transform: rotate(18deg) scale(1);
+  }
+}
+
+@keyframes lab-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.8);
+  }
+  40% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-36px) scale(1.15);
+  }
+}
+
+@keyframes lab-wave {
+  0%,
+  100% {
+    transform: translateY(0) scaleX(1);
+  }
+  50% {
+    transform: translateY(3px) scaleX(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-drop,
+  .lab-liquid,
+  .lab-bubble,
+  .lab-crystals span,
+  .lab-steam span,
+  .lab-glyph {
+    animation: none !important;
+  }
+
+  .is-playing .lab-liquid-mix {
+    height: 68%;
+    opacity: 0;
+  }
+
+  .is-playing .lab-liquid-product,
+  .is-playing .lab-glyph,
+  .theme-salt.is-reveal .lab-crystals span {
+    height: 68%;
+    opacity: 1;
+    transform: none;
+  }
+}

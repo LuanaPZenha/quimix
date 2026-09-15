@@ -6,7 +6,9 @@ import {
   type MixtureResult,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { MixtureBeaker } from "../components/MixtureBeaker";
 import { PeriodicTable } from "../components/PeriodicTable";
+import { identifyMixture } from "../data/mixtureOutcomes";
 import {
   CATEGORY_COLORS,
   elementReagentId,
@@ -24,11 +26,31 @@ export function SimulatePage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MixtureResult | null>(null);
+  const [sceneId, setSceneId] = useState(0);
 
   const selectedSymbols = useMemo(
     () => new Set(selected.map((item) => item.element.symbol)),
     [selected],
   );
+
+  const outcome = useMemo(
+    () =>
+      identifyMixture(
+        selected.map((item) => ({
+          symbol: item.element.symbol,
+          volumeMl: Number(item.volumeMl) || 0,
+        })),
+      ),
+    [selected],
+  );
+
+  const visibleWarnings = useMemo(() => {
+    if (!result) return [];
+    if (outcome.kind === "blend") return result.warnings;
+    return result.warnings.filter(
+      (warning) => !warning.includes("não há modelagem de reação química"),
+    );
+  }, [result, outcome.kind]);
 
   function toggleElement(element: PeriodicElement) {
     setResult(null);
@@ -59,6 +81,7 @@ export function SimulatePage() {
       }));
       const data = await simulateMixture(components);
       setResult(data);
+      setSceneId((id) => id + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha na simulação");
     } finally {
@@ -175,12 +198,18 @@ export function SimulatePage() {
           {error ? <p className="error">{error}</p> : null}
         </form>
 
-        <aside className="panel result-panel" aria-live="polite">
+        <aside className="panel result-panel">
           <h2>Resultado</h2>
+          <MixtureBeaker
+            key={sceneId}
+            items={selected}
+            playing={Boolean(result)}
+            busy={submitting}
+          />
           {!result ? (
             <p className="muted">
-              Selecione elementos na tabela e execute para ver concentrações e
-              logs.
+              Selecione elementos na tabela e execute para ver a transformação,
+              as concentrações e os logs.
             </p>
           ) : (
             <>
@@ -199,9 +228,9 @@ export function SimulatePage() {
                   </li>
                 ))}
               </ul>
-              {result.warnings.length > 0 ? (
+              {visibleWarnings.length > 0 ? (
                 <div className="warnings">
-                  {result.warnings.map((warning) => (
+                  {visibleWarnings.map((warning) => (
                     <p key={warning}>{warning}</p>
                   ))}
                 </div>
