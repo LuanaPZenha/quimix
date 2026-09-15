@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-quimix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quimix_dev_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-quimix}
+    # Postgres só na rede interna do Compose (evita conflito com Postgres local na 5432)
+    expose:
+      - "5432"
+    volumes:
+      - quimix_pg_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quimix}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  simulation-service:
+    build:
+      context: ../quimix-simulation-service
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-quimix}:${POSTGRES_PASSWORD:-quimix_dev_change_me}@postgres:5432/quimix_simulation
+    ports:
+      - "${SIMULATION_PORT:-8001}:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  auth-service:
+    build:
+      context: ../quimix-auth-service
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-quimix}:${POSTGRES_PASSWORD:-quimix_dev_change_me}@postgres:5432/quimix_auth
+      JWT_SECRET: ${JWT_SECRET:-quimix_dev_jwt_secret_change_me_please_32chars}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_MINUTES: 30
+      REFRESH_TOKEN_DAYS: 7
+      SEED_ADMIN_ENABLED: ${SEED_ADMIN_ENABLED:-true}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@12345}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Admin Quimix}
+    ports:
+      - "${AUTH_PORT:-8002}:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api-gateway:
+    build:
+      context: ../quimix-api-gateway
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: development
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      SIMULATION_SERVICE_URL: ${SIMULATION_SERVICE_URL:-http://simulation-service:8001}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8002}
+      JWT_SECRET: ${JWT_SECRET:-quimix_dev_jwt_secret_change_me_please_32chars}
+      JWT_ALGORITHM: HS256
+    ports:
+      - "${GATEWAY_PORT:-8000}:8000"
+    depends_on:
+      - simulation-service
+      - auth-service
+
+  web:
+    build:
+      context: ../quimix-web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      - api-gateway
+
+volumes:
+  quimix_pg_data:
