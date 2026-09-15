@@ -2,6 +2,8 @@ import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Role } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { LabAtmosphere } from "../components/LabAtmosphere";
+import { QuimixMark } from "../components/QuimixMark";
 
 export function RegisterPage() {
   const { register } = useAuth();
@@ -34,12 +36,15 @@ export function RegisterPage() {
 
   return (
     <main className="page auth-page">
+      <LabAtmosphere />
       <form className="panel auth-panel" onSubmit={onSubmit}>
-        <Link className="brand-link" to="/">
-          Quimix
+        <Link className="brand-lockup brand-lockup-sm" to="/">
+          <QuimixMark className="brand-mark brand-mark-sm" />
+          <span className="brand-link">Quimix</span>
         </Link>
+        <p className="eyebrow ink">Novo pesquisador</p>
         <h1>Criar conta</h1>
-        <p className="panel-copy">Cadastre-se como aluno ou professor.</p>
+        <p className="panel-copy">Cadastre-se como aluno ou professor para começar a simular.</p>
         <label>
           Nome completo
           <input

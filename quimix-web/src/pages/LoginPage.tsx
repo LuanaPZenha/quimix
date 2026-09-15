@@ -1,6 +1,8 @@
 import { FormEvent, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { LabAtmosphere } from "../components/LabAtmosphere";
+import { QuimixMark } from "../components/QuimixMark";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -28,13 +30,17 @@ export function LoginPage() {
 
   return (
     <main className="page auth-page">
+      <LabAtmosphere />
       <form className="panel auth-panel" onSubmit={onSubmit}>
-        <Link className="brand-link" to="/">
-          Quimix
+        <Link className="brand-lockup brand-lockup-sm" to="/">
+          <QuimixMark className="brand-mark brand-mark-sm" />
+          <span className="brand-link">Quimix</span>
         </Link>
+        <p className="eyebrow ink">Acesso ao laboratório</p>
         <h1>Entrar</h1>
         <p className="panel-copy">
-          É necessário estar logado para executar experimentos.
+          Use sua conta para executar experimentos e salvar o raciocínio da
+          simulação.
         </p>
         <label>
           E-mail

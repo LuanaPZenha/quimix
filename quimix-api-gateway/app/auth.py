@@ -28,6 +28,7 @@ def require_access_token(request: Request) -> dict[str, Any]:
             token,
             settings.jwt_secret,
             algorithms=[settings.jwt_algorithm],
+            leeway=60,
         )
     except jwt.PyJWTError as exc:
         raise HTTPException(

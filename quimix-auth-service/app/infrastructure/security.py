@@ -27,8 +27,8 @@ def create_access_token(*, user_id: str, email: str, role: Role) -> str:
         "email": email,
         "role": role.value,
         "type": "access",
-        "iat": now,
-        "exp": now + timedelta(minutes=settings.access_token_minutes),
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=settings.access_token_minutes)).timestamp()),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
@@ -38,8 +38,8 @@ def create_refresh_token(*, user_id: str) -> str:
     payload: dict[str, Any] = {
         "sub": user_id,
         "type": "refresh",
-        "iat": now,
-        "exp": now + timedelta(days=settings.refresh_token_days),
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(days=settings.refresh_token_days)).timestamp()),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
@@ -50,6 +50,7 @@ def decode_token(token: str, *, expected_type: str) -> dict[str, Any]:
             token,
             settings.jwt_secret,
             algorithms=[settings.jwt_algorithm],
+            leeway=60,
         )
     except jwt.PyJWTError as exc:
         raise AuthError("Token inválido ou expirado.") from exc

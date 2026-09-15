@@ -8,6 +8,7 @@ import {
 import { useAuth } from "../auth/AuthContext";
 import { MixtureBeaker } from "../components/MixtureBeaker";
 import { PeriodicTable } from "../components/PeriodicTable";
+import { QuimixMark } from "../components/QuimixMark";
 import { identifyMixture } from "../data/mixtureOutcomes";
 import {
   CATEGORY_COLORS,
@@ -92,11 +93,12 @@ export function SimulatePage() {
   return (
     <main className="page simulate-page">
       <header className="topbar">
-        <Link className="brand-link" to="/">
-          Quimix
+        <Link className="brand-lockup brand-lockup-sm" to="/">
+          <QuimixMark className="brand-mark brand-mark-sm" />
+          <span className="brand-link">Quimix</span>
         </Link>
         <div className="topbar-right">
-          <span className="topbar-label">Simulação de misturas</span>
+          <span className="topbar-chip">Simulação de misturas</span>
           {user ? (
             <>
               <span className="topbar-user">
@@ -116,6 +118,7 @@ export function SimulatePage() {
 
       <section className="simulate-layout simulate-layout-pt">
         <form className="panel pt-panel" onSubmit={onSubmit}>
+          <p className="eyebrow ink">Bancada</p>
           <h1>Tabela periódica</h1>
           <p className="panel-copy">
             Clique nos elementos para montar a mistura. Ajuste os volumes e
@@ -199,6 +202,7 @@ export function SimulatePage() {
         </form>
 
         <aside className="panel result-panel">
+          <p className="eyebrow ink">Transformação</p>
           <h2>Resultado</h2>
           <MixtureBeaker
             key={sceneId}

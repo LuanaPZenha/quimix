@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     app_name: str = "quimix-auth-service"
     app_version: str = "0.1.0"
     database_url: str = "sqlite:///./quimix_auth.db"
-    jwt_secret: str = "change_me_to_a_long_random_secret_in_production"
+    jwt_secret: str = "quimix_dev_jwt_secret_change_me_please_32chars"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 30
     refresh_token_days: int = 7

@@ -84,6 +84,83 @@ export function getAccessToken(): string | null {
   return localStorage.getItem(ACCESS_KEY);
 }
 
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_KEY);
+}
+
+const SESSION_EXPIRED_EVENT = "quimix-session-expired";
+const SESSION_REFRESHED_EVENT = "quimix-session-refreshed";
+
+function emit(name: string, detail?: User): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(detail ? new CustomEvent(name, { detail }) : new Event(name));
+}
+
+function expireSession(): void {
+  clearSession();
+  emit(SESSION_EXPIRED_EVENT);
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function refreshSessionOnce(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!response.ok) return false;
+    const tokens = (await response.json()) as AuthTokens;
+    saveSession(tokens);
+    emit(SESSION_REFRESHED_EVENT, tokens.user);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function refreshSession(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSessionOnce().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+function authHeaders(extra: Record<string, string> = {}): HeadersInit {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Login obrigatório para executar experimentos.");
+  }
+  return {
+    Accept: "application/json",
+    Authorization: `Bearer ${token}`,
+    ...extra,
+  };
+}
+
+async function authorizedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const extra = { ...(init.headers as Record<string, string> | undefined) };
+  const first = await fetch(url, { ...init, headers: authHeaders(extra) });
+  if (first.status !== 401) return first;
+
+  const refreshed = await refreshSession();
+  if (!refreshed) {
+    expireSession();
+    throw new Error("Sessão expirada. Faça login novamente.");
+  }
+  const retried = await fetch(url, { ...init, headers: authHeaders(extra) });
+  if (retried.status === 401) {
+    expireSession();
+    throw new Error("Sessão expirada. Faça login novamente.");
+  }
+  return retried;
+}
+
 export async function registerUser(input: {
   email: string;
   password: string;
@@ -113,31 +190,15 @@ export async function loginUser(input: {
 }
 
 export async function fetchMe(): Promise<User> {
-  const token = getAccessToken();
-  if (!token) throw new Error("Não autenticado");
-  const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
-    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+  const response = await authorizedFetch(`${API_BASE_URL}/api/v1/auth/me`, {
+    headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();
 }
 
-function authHeaders(extra: Record<string, string> = {}): HeadersInit {
-  const token = getAccessToken();
-  if (!token) {
-    throw new Error("Login obrigatório para executar experimentos.");
-  }
-  return {
-    Accept: "application/json",
-    Authorization: `Bearer ${token}`,
-    ...extra,
-  };
-}
-
 export async function fetchReagents(): Promise<Reagent[]> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/reagents`, {
-    headers: authHeaders(),
-  });
+  const response = await authorizedFetch(`${API_BASE_URL}/api/v1/reagents`);
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();
 }
@@ -145,14 +206,16 @@ export async function fetchReagents(): Promise<Reagent[]> {
 export async function simulateMixture(
   components: MixtureComponentInput[],
 ): Promise<MixtureResult> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/simulations/mixtures`, {
+  const response = await authorizedFetch(`${API_BASE_URL}/api/v1/simulations/mixtures`, {
     method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ components }),
   });
   if (!response.ok) throw new Error(await parseError(response));
   return response.json();
 }
+
+export { SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT };
 
 export function formatConcentration(value: number): string {
   if (Number.isInteger(value)) return `${value}`;

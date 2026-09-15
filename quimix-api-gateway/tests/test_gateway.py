@@ -70,6 +70,25 @@ def _make_access_token() -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
+def test_simulation_rejects_expired_token():
+    now = datetime.now(UTC)
+    payload = {
+        "sub": "user-1",
+        "email": "aluno@example.com",
+        "role": "aluno",
+        "type": "access",
+        "iat": int((now - timedelta(hours=2)).timestamp()),
+        "exp": int((now - timedelta(hours=1)).timestamp()),
+    }
+    token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    response = client.get(
+        "/api/v1/reagents",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 401
+    assert "Sessão inválida" in response.json()["detail"]
+
+
 def test_simulation_accepts_valid_token_shape():
     # Sem upstream real no teste unitário: token válido passa da auth e pode dar 502
     token = _make_access_token()
