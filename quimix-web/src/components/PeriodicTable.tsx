@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import {
   CATEGORY_COLORS,
   CATEGORY_LABELS,
@@ -6,9 +7,41 @@ import {
   type PeriodicElement,
 } from "../data/periodicTable";
 
+function ElementCell({
+  element,
+  selected,
+  onToggle,
+  interactive,
+  className = "",
+  style,
+}: {
+  element: PeriodicElement;
+  selected: boolean;
+  onToggle: (element: PeriodicElement) => void;
+  interactive: boolean;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <button
+      type="button"
+      className={`pt-cell${selected ? " is-selected" : ""}${className ? ` ${className}` : ""}`}
+      style={{ background: CATEGORY_COLORS[element.category], ...style }}
+      title={`${element.name} (${element.symbol})`}
+      disabled={!interactive}
+      onClick={() => onToggle(element)}
+    >
+      <span className="pt-z">{element.z}</span>
+      <span className="pt-symbol">{element.symbol}</span>
+      <span className="pt-name">{element.name}</span>
+    </button>
+  );
+}
+
 type Props = {
   selectedSymbols: Set<string>;
   onToggle: (element: PeriodicElement) => void;
+  interactive?: boolean;
 };
 
 const MAIN_PERIODS = [1, 2, 3, 4, 5, 6, 7];
@@ -24,11 +57,11 @@ function seriesElements(period: number): PeriodicElement[] {
   );
 }
 
-export function PeriodicTable({ selectedSymbols, onToggle }: Props) {
+export function PeriodicTable({ selectedSymbols, onToggle, interactive = true }: Props) {
   const categories = Object.keys(CATEGORY_LABELS) as ElementCategory[];
 
   return (
-    <div className="pt-wrap">
+    <div className={`pt-wrap${interactive ? "" : " is-locked"}`}>
       <div className="pt-grid" role="grid" aria-label="Tabela periódica">
         {MAIN_PERIODS.map((period) =>
           GROUPS.map((group) => {
@@ -44,21 +77,14 @@ export function PeriodicTable({ selectedSymbols, onToggle }: Props) {
             }
             const selected = selectedSymbols.has(el.symbol);
             return (
-              <button
+              <ElementCell
                 key={el.symbol}
-                type="button"
-                className={`pt-cell${selected ? " is-selected" : ""}`}
-                style={{
-                  gridColumn: group,
-                  gridRow: period,
-                  background: CATEGORY_COLORS[el.category],
-                }}
-                title={`${el.name} (${el.symbol})`}
-                onClick={() => onToggle(el)}
-              >
-                <span className="pt-z">{el.z}</span>
-                <span className="pt-symbol">{el.symbol}</span>
-              </button>
+                element={el}
+                selected={selected}
+                interactive={interactive}
+                onToggle={onToggle}
+                style={{ gridColumn: group, gridRow: period }}
+              />
             );
           }),
         )}
@@ -70,17 +96,14 @@ export function PeriodicTable({ selectedSymbols, onToggle }: Props) {
           {seriesElements(8).map((el) => {
             const selected = selectedSymbols.has(el.symbol);
             return (
-              <button
+              <ElementCell
                 key={el.symbol}
-                type="button"
-                className={`pt-cell pt-series-cell${selected ? " is-selected" : ""}`}
-                style={{ background: CATEGORY_COLORS[el.category] }}
-                title={`${el.name} (${el.symbol})`}
-                onClick={() => onToggle(el)}
-              >
-                <span className="pt-z">{el.z}</span>
-                <span className="pt-symbol">{el.symbol}</span>
-              </button>
+                element={el}
+                selected={selected}
+                interactive={interactive}
+                onToggle={onToggle}
+                className="pt-series-cell"
+              />
             );
           })}
         </div>
@@ -89,17 +112,14 @@ export function PeriodicTable({ selectedSymbols, onToggle }: Props) {
           {seriesElements(9).map((el) => {
             const selected = selectedSymbols.has(el.symbol);
             return (
-              <button
+              <ElementCell
                 key={el.symbol}
-                type="button"
-                className={`pt-cell pt-series-cell${selected ? " is-selected" : ""}`}
-                style={{ background: CATEGORY_COLORS[el.category] }}
-                title={`${el.name} (${el.symbol})`}
-                onClick={() => onToggle(el)}
-              >
-                <span className="pt-z">{el.z}</span>
-                <span className="pt-symbol">{el.symbol}</span>
-              </button>
+                element={el}
+                selected={selected}
+                interactive={interactive}
+                onToggle={onToggle}
+                className="pt-series-cell"
+              />
             );
           })}
         </div>

@@ -169,6 +169,10 @@ export const CATEGORY_LABELS: Record<ElementCategory, string> = {
   actinide: "Actinídeos",
 };
 
+export const ELEMENT_BY_SYMBOL: Record<string, PeriodicElement> = Object.fromEntries(
+  PERIODIC_ELEMENTS.map((el) => [el.symbol, el]),
+);
+
 export function elementReagentId(symbol: string): string {
   return `el-${symbol}`;
 }
