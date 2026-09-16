@@ -10,7 +10,11 @@ export type MixtureKind =
   | "alloy"
   | "organic"
   | "mineral"
+  | "powder"
+  | "ice"
   | "blend";
+
+export type MixtureEffect = "none" | "explode" | "melt" | "freeze" | "ignite";
 
 export type MixtureInput = {
   symbol: string;
@@ -23,9 +27,11 @@ export type MixtureOutcome = {
   name: string;
   equation: string;
   kind: MixtureKind;
+  effect: MixtureEffect;
   liquidColor: string;
   caption: string;
   ratioHint?: string;
+  why?: string;
 };
 
 type Recipe = {
@@ -35,8 +41,10 @@ type Recipe = {
   name: string;
   equation: string;
   kind: MixtureKind;
+  effect: MixtureEffect;
   liquidColor: string;
   caption: string;
+  why?: string;
 };
 
 const KIND_COLOR: Record<MixtureKind, string> = {
@@ -49,8 +57,12 @@ const KIND_COLOR: Record<MixtureKind, string> = {
   alloy: "#b7c2cc",
   organic: "#c4a070",
   mineral: "#d9cbb0",
+  powder: "#2a2118",
+  ice: "#c8e4f8",
   blend: "#7aa392",
 };
+
+const ALKALI_METALS = new Set(["Li", "Na", "K", "Rb", "Cs", "Fr"]);
 
 const ELEMENT_COLORS: Record<string, string> = {
   H: "#f4fbff",
@@ -118,6 +130,40 @@ const HALOGENS = [
 
 const RECIPES: Recipe[] = [];
 const BY_KEY = new Map<string, Recipe[]>();
+const BY_FORMULA = new Map<string, Recipe>();
+const BY_NAME = new Map<string, Recipe>();
+
+export const FORMULA_PRESETS = [
+  "H2O",
+  "NaCl",
+  "HCl",
+  "NaOH",
+  "H2SO4",
+  "HNO3",
+  "CO2",
+  "CH4",
+  "NH3",
+  "H2O2",
+  "CaCO3",
+  "Fe2O3",
+  "C2H5OH",
+  "C6H12O6",
+  "KOH",
+] as const;
+
+function formulaIndex(formula: string): string {
+  return formula
+    .replace(/[₀₁₂₃₄₅₆₇₈₉]/g, (digit) => "0123456789"["₀₁₂₃₄₅₆₇₈₉".indexOf(digit)] ?? digit)
+    .replace(/[^A-Za-z0-9()]/g, "");
+}
+
+function nameIndex(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
 
 function gcd(a: number, b: number): number {
   let x = Math.abs(a);
@@ -181,7 +227,12 @@ function addRecipe(
   formula: string,
   name: string,
   kind: MixtureKind,
-  options: { caption?: string; color?: string } = {},
+  options: {
+    caption?: string;
+    color?: string;
+    effect?: MixtureEffect;
+    why?: string;
+  } = {},
 ): void {
   const clean: Record<string, number> = {};
   for (const [symbol, count] of Object.entries(stoich)) {
@@ -195,13 +246,19 @@ function addRecipe(
     name,
     equation: equationFrom(clean, formula),
     kind,
+    effect: options.effect ?? "none",
     liquidColor: options.color ?? KIND_COLOR[kind],
     caption: options.caption ?? `A mistura vira ${name}.`,
+    why: options.why,
   };
   RECIPES.push(recipe);
   const list = BY_KEY.get(key);
   if (list) list.push(recipe);
   else BY_KEY.set(key, [recipe]);
+  const formulaKey = formulaIndex(formula);
+  if (formulaKey) BY_FORMULA.set(formulaKey, recipe);
+  const named = nameIndex(name);
+  if (named && !BY_NAME.has(named)) BY_NAME.set(named, recipe);
 }
 
 function addIonic(
@@ -357,37 +414,59 @@ addRecipe({ H: 2, O: 2 }, "H2O2", "Água oxigenada", "acid", {
   color: "#9fd4e8",
 });
 
+addRecipe({ H: 1, F: 1 }, "HF", "ácido fluorídrico", "acid", {
+  caption: "A mistura vira ácido fluorídrico, o único ácido comum que ataca o vidro.",
+  effect: "melt",
+  why: "O HF reage com a sílica do vidro (SiO₂ + 6 HF → H₂SiF₆ + 2 H₂O). Por isso o béquer de vidro é o recipiente errado: o ácido dissolve o próprio frasco. Ácidos como HCl ou H₂SO₄ não fazem isso.",
+});
 for (const halogen of HALOGENS) {
+  if (halogen.symbol === "F") continue;
   addRecipe({ H: 1, [halogen.symbol]: 1 }, `H${halogen.symbol}`, halogen.acid, "acid");
 }
 
 addRecipe({ H: 2, S: 1 }, "H2S", "Gás sulfídrico", "gas", {
-  caption: "A mistura libera gás sulfídrico.",
+  caption: "O H₂S é um gás tóxico e inflamável. No béquer ele aparece como gás; só queima se houver ignição.",
 });
 addRecipe({ H: 2, Se: 1 }, "H2Se", "Seleneto de hidrogênio", "gas");
 addRecipe({ H: 2, Te: 1 }, "H2Te", "Telureto de hidrogênio", "gas");
 addRecipe({ N: 1, H: 3 }, "NH3", "Amônia", "gas", {
   caption: "A mistura vira amônia, um gás incolor e pungente.",
 });
-addRecipe({ P: 1, H: 3 }, "PH3", "Fosfina", "gas");
+addRecipe({ P: 1, H: 3 }, "PH3", "Fosfina", "gas", {
+  caption: "A fosfina é um gás que inflama sozinho no ar.",
+  effect: "ignite",
+  why: "A fosfina é pirofórica: ao se formar, reage com o oxigênio do ar e pega fogo. Não é uma queima “de palco” — é a instabilidade do PH₃ em contato com o ar.",
+});
 addRecipe({ As: 1, H: 3 }, "AsH3", "Arsina", "gas");
 addRecipe({ Sb: 1, H: 3 }, "SbH3", "Estibina", "gas");
-addRecipe({ B: 2, H: 6 }, "B2H6", "Diborano", "gas");
-addRecipe({ Si: 1, H: 4 }, "SiH4", "Silano", "gas");
-addRecipe({ C: 1, H: 4 }, "CH4", "Metano", "gas", {
-  caption: "A mistura forma metano, o gás natural.",
+addRecipe({ B: 2, H: 6 }, "B2H6", "Diborano", "gas", {
+  caption: "O diborano inflama espontaneamente no ar.",
+  effect: "ignite",
+  why: "O diborano é pirofórico. A ligação B–H reage com O₂ assim que o gás encontra o ar, então a mistura inflama sem fósforo nem faísca.",
 });
-addRecipe({ C: 1, H: 1 }, "CH", "Radical metino", "organic");
+addRecipe({ Si: 1, H: 4 }, "SiH4", "Silano", "gas", {
+  caption: "O silano pega fogo ao contato com o ar.",
+  effect: "ignite",
+  why: "O silano é pirofórico: a mistura com o oxigênio do ar é espontânea e exotérmica o bastante para inflamar.",
+});
+addRecipe({ C: 1, H: 4 }, "CH4", "Metano", "gas", {
+  caption: "A mistura vira metano, o principal componente do gás natural. É inflamável, mas no béquer permanece como gás até haver ignição.",
+});
+addRecipe({ C: 1, H: 1 }, "CH", "Radical metino", "gas");
 addRecipe({ C: 2, H: 2 }, "C2H2", "Acetileno", "gas", {
-  caption: "A mistura vira acetileno, usado em maçaricos.",
+  caption: "A mistura vira acetileno, usado em maçaricos. É um gás inflamável, não uma chama pronta.",
 });
 addRecipe({ C: 2, H: 4 }, "C2H4", "Etileno", "gas");
 addRecipe({ C: 2, H: 6 }, "C2H6", "Etano", "gas");
-addRecipe({ C: 3, H: 8 }, "C3H8", "Propano", "gas");
+addRecipe({ C: 3, H: 8 }, "C3H8", "Propano", "gas", {
+  caption: "A mistura vira propano, o gás de botijão. Inflama só com uma fonte de calor.",
+});
 addRecipe({ C: 4, H: 10 }, "C4H10", "Butano", "gas");
-addRecipe({ C: 6, H: 6 }, "C6H6", "Benzeno", "organic");
+addRecipe({ C: 6, H: 6 }, "C6H6", "Benzeno", "organic", {
+  caption: "A mistura vira benzeno, um líquido inflamável.",
+});
 addRecipe({ C: 8, H: 18 }, "C8H18", "Octano", "organic", {
-  caption: "A mistura se aproxima da gasolina (octano).",
+  caption: "A mistura se aproxima da gasolina: um líquido combustível, não uma chama.",
 });
 
 addRecipe({ C: 1, O: 1 }, "CO", "Monóxido de carbono", "gas", {
@@ -425,10 +504,16 @@ addRecipe({ Sb: 2, O: 3 }, "Sb2O3", "Óxido de antimônio", "oxide");
 addRecipe({ Se: 1, O: 2 }, "SeO2", "Dióxido de selênio", "oxide");
 addRecipe({ Te: 1, O: 2 }, "TeO2", "Dióxido de telúrio", "oxide");
 addRecipe({ Cl: 2, O: 1 }, "Cl2O", "Monóxido de dicloro", "gas");
-addRecipe({ Cl: 2, O: 7 }, "Cl2O7", "Heptóxido de dicloro", "oxide");
+addRecipe({ Cl: 2, O: 7 }, "Cl2O7", "Heptóxido de dicloro", "oxide", {
+  caption: "O Cl₂O₇ é um oxidante extremamente instável.",
+  effect: "explode",
+  why: "O heptóxido de dicloro é tão oxidante e instável que detona ao se formar ou ao menor atrito. Aqui a explosão ensina o risco da mistura, não um “efeito especial”.",
+});
 addRecipe({ F: 2, O: 1 }, "OF2", "Difluoreto de oxigênio", "gas");
 
-addRecipe({ C: 1, S: 2 }, "CS2", "Dissulfeto de carbono", "organic");
+addRecipe({ C: 1, S: 2 }, "CS2", "Dissulfeto de carbono", "organic", {
+  caption: "O CS₂ é um líquido muito inflamável. No béquer ele aparece como solvente, não como fogo.",
+});
 addRecipe({ C: 1, N: 1 }, "CN", "Cianeto", "organic");
 addRecipe({ Si: 1, C: 1 }, "SiC", "Carboneto de silício", "mineral", {
   caption: "A mistura vira carborundum, um abrasivo duríssimo.",
@@ -478,15 +563,17 @@ addRecipe({ N: 1, H: 5, O: 1 }, "NH4OH", "Hidróxido de amônio", "base", {
   caption: "A mistura vira amoníaco em solução (NH₄OH).",
 });
 addRecipe({ N: 1, H: 4, Cl: 1 }, "NH4Cl", "Cloreto de amônio", "salt");
-addRecipe({ N: 2, H: 4, O: 3 }, "NH4NO3", "Nitrato de amônio", "salt");
+addRecipe({ N: 2, H: 4, O: 3 }, "NH4NO3", "Nitrato de amônio", "salt", {
+  caption: "A mistura vira nitrato de amônio, um sal usado em fertilizantes. Só detona com calor extremo ou iniciação, não ao ser formado.",
+});
 addRecipe({ N: 2, H: 8, S: 1, O: 4 }, "(NH4)2SO4", "Sulfato de amônio", "salt");
 
 addRecipe({ C: 1, H: 2, O: 1 }, "CH2O", "Formaldeído", "organic");
 addRecipe({ C: 1, H: 4, O: 1 }, "CH3OH", "Metanol", "organic", {
-  caption: "A mistura vira metanol (álcool metílico).",
+  caption: "A mistura vira metanol, um líquido inflamável.",
 });
 addRecipe({ C: 2, H: 6, O: 1 }, "C2H5OH", "Etanol", "organic", {
-  caption: "A mistura vira etanol, o álcool comum.",
+  caption: "A mistura vira etanol, o álcool das bebidas. É combustível, mas no béquer permanece líquido.",
   color: "#d7e8f2",
 });
 addRecipe({ C: 2, H: 4, O: 2 }, "CH3COOH", "Ácido acético", "organic", {
@@ -643,8 +730,16 @@ addRecipe({ Zn: 1, Cu: 1, Ni: 1 }, "ZnCuNi", "Alpaca (prata alemã)", "alloy");
 addRecipe({ Xe: 1, F: 2 }, "XeF2", "Difluoreto de xenônio", "salt");
 addRecipe({ Xe: 1, F: 4 }, "XeF4", "Tetrafluoreto de xenônio", "salt");
 addRecipe({ Xe: 1, F: 6 }, "XeF6", "Hexafluoreto de xenônio", "salt");
-addRecipe({ Xe: 1, O: 3 }, "XeO3", "Trióxido de xenônio", "oxide");
-addRecipe({ Xe: 1, O: 4 }, "XeO4", "Tetróxido de xenônio", "oxide");
+addRecipe({ Xe: 1, O: 3 }, "XeO3", "Trióxido de xenônio", "oxide", {
+  caption: "O XeO₃ é um sólido instável.",
+  effect: "explode",
+  why: "O trióxido de xenônio é termodinamicamente instável: a formação já libera energia demais e o composto detona. Não é um explosivo “armazenável” como a pólvora.",
+});
+addRecipe({ Xe: 1, O: 4 }, "XeO4", "Tetróxido de xenônio", "oxide", {
+  caption: "O XeO₄ é instável mesmo no frio.",
+  effect: "explode",
+  why: "O tetróxido de xenônio detona espontaneamente. A mistura está errada porque o produto não consegue existir em paz no béquer.",
+});
 addRecipe({ Kr: 1, F: 2 }, "KrF2", "Difluoreto de criptônio", "salt");
 addRecipe({ Rn: 1, F: 2 }, "RnF2", "Difluoreto de radônio", "salt");
 addRecipe({ U: 1, F: 6 }, "UF6", "Hexafluoreto de urânio", "gas", {
@@ -662,7 +757,67 @@ addRecipe({ C: 1, F: 4 }, "CF4", "Tetrafluoreto de carbono", "gas");
 addRecipe({ N: 1, F: 3 }, "NF3", "Trifluoreto de nitrogênio", "gas");
 addRecipe({ N: 1, H: 1, O: 1 }, "HNO", "Nitroxila", "gas");
 
-const SPECIAL: Record<string, Partial<Pick<Recipe, "name" | "caption" | "kind" | "liquidColor">>> = {
+addRecipe({ K: 2, N: 2, O: 6, C: 3, S: 1 }, "KNO3·C·S", "Pólvora negra", "powder", {
+  caption: "Salitre, carvão e enxofre formam pólvora negra, um pó cinza-escuro. Ela só explode com ignição, não ao ser misturada.",
+  color: "#2a2118",
+});
+addRecipe({ K: 1, N: 1, O: 3, C: 1, S: 1 }, "KNO3CS", "Pólvora negra", "powder", {
+  caption: "A mistura clássica da pólvora é um pó. Sem faísca, calor ou impacto forte, o béquer só contém pólvora negra.",
+  color: "#2a2118",
+});
+addRecipe({ Al: 1, C: 8, H: 18 }, "AlC8H18", "Napalm", "organic", {
+  caption: "Gasolina espessada com alumínio: no béquer vira um gel pegajoso. Só queima se for inflamado.",
+  color: "#6a4a22",
+});
+addRecipe({ Al: 1, C: 16, H: 31, O: 2 }, "Al(C16H31O2)", "Napalm (palmitato)", "organic", {
+  caption: "O palmitato de alumínio espessa o combustível. O produto é um gel, não uma chama.",
+  color: "#6a4a22",
+});
+addRecipe({ C: 8, H: 18, S: 1 }, "C8H18S", "Fogo grego", "organic", {
+  caption: "Óleo e enxofre formam um líquido inflamável aderente. Misturar não é o mesmo que atear fogo.",
+  color: "#5a3a18",
+});
+addRecipe({ Al: 2, Fe: 2, O: 3 }, "Al+Fe2O3", "Termite", "powder", {
+  caption: "Alumínio e óxido de ferro formam a mistura da termite, um pó. Ela só queima depois de uma ignição muito quente.",
+  color: "#8a5a28",
+});
+addRecipe({ Al: 2, K: 1, Cl: 1, O: 4 }, "KClO4·Al", "Pólvora-relâmpago", "powder", {
+  caption: "Perclorato e alumínio formam um pó relâmpago. Sem iniciação, permanece sólido no béquer.",
+  color: "#c8c0a8",
+});
+addRecipe({ C: 3, H: 5, N: 3, O: 9 }, "C3H5N3O9", "Nitroglicerina", "organic", {
+  caption: "A mistura se aproxima da nitroglicerina, um líquido oleoso extremamente sensível.",
+  color: "#c8d96a",
+  effect: "explode",
+  why: "A nitroglicerina é tão instável a choque e calor que obtê-la no béquer já é uma mistura perigosa: a própria formação pode detonar. Por isso ela não é um produto estável nesta bancada.",
+});
+addRecipe({ C: 7, H: 5, N: 3, O: 6 }, "C7H5N3O6", "TNT", "powder", {
+  caption: "O trinitrotolueno é um sólido amarelado relativamente estável. No béquer você vê o composto, não uma explosão.",
+  color: "#c4a070",
+});
+addRecipe({ C: 3, H: 6, N: 6, O: 6 }, "C3H6N6O6", "RDX", "powder", {
+  caption: "O RDX é um explosivo sólido. Sem detonador, permanece como pó.",
+  color: "#e8e0c8",
+});
+addRecipe({ C: 5, H: 8, N: 4, O: 12 }, "C5H8N4O12", "PETN", "powder", {
+  caption: "O PETN é um sólido cristalino. A explosão exigiria iniciação, não só a mistura.",
+  color: "#f0e6c0",
+});
+addRecipe({ N: 2, H: 4, O: 3, C: 1 }, "NH4NO3·C", "ANFO", "powder", {
+  caption: "Nitrato de amônio com combustível forma ANFO, um explosivo de mineração. No béquer é só a mistura sólida.",
+  color: "#d9cbb0",
+});
+addRecipe({ Ba: 1, O: 2, H: 6, N: 1, Cl: 1 }, "Ba(OH)2·NH4Cl", "Mistura endotérmica", "ice", {
+  caption: "Hidróxido de bário e cloreto de amônio reagem absorvendo calor.",
+  color: "#c8e4f8",
+  effect: "freeze",
+  why: "Esta reação é fortemente endotérmica: absorve tanta energia do ambiente que a temperatura cai abaixo de 0 °C e o entorno pode congelar. É o contrário de uma explosão — falta calor, não sobra.",
+});
+
+const SPECIAL: Record<
+  string,
+  Partial<Pick<Recipe, "name" | "caption" | "kind" | "liquidColor" | "effect" | "why">>
+> = {
   NaOH: {
     name: "Soda cáustica",
     caption: "A mistura vira soda cáustica (NaOH).",
@@ -683,6 +838,28 @@ const SPECIAL: Record<string, Partial<Pick<Recipe, "name" | "caption" | "kind" |
   Fe2O3: { name: "Ferrugem", kind: "oxide" },
   SiO2: { name: "Sílica (areia)", kind: "mineral" },
   Al2O3: { name: "Alumina", kind: "mineral" },
+  MgO: {
+    name: "Óxido de magnésio",
+    kind: "oxide",
+    caption: "A mistura vira óxido de magnésio, um pó branco.",
+    liquidColor: "#f4f0dc",
+    effect: "ignite",
+    why: "O magnésio metálico queima no oxigênio com chama branca ofuscante e vira MgO. O fogo é a reação de formação, não o óxido já pronto.",
+  },
+  P4O10: {
+    name: "Pentóxido de fósforo",
+    kind: "oxide",
+    caption: "A mistura vira pentóxido de fósforo, um sólido branco.",
+    effect: "ignite",
+    why: "O fósforo queima no oxigênio e forma o óxido. A chama ensina a combustão do fósforo; o produto final é o pó de P₄O₁₀.",
+  },
+  P2O5: {
+    name: "Pentóxido de fósforo",
+    kind: "oxide",
+    caption: "A mistura vira pentóxido de fósforo.",
+    effect: "ignite",
+    why: "O fósforo inflama no ar/oxigênio e deixa um fumo branco de óxido.",
+  },
 };
 
 for (const recipe of RECIPES) {
@@ -692,7 +869,27 @@ for (const recipe of RECIPES) {
   if (extra.caption) recipe.caption = extra.caption;
   if (extra.kind) recipe.kind = extra.kind;
   if (extra.liquidColor) recipe.liquidColor = extra.liquidColor;
+  if (extra.effect) recipe.effect = extra.effect;
+  if (extra.why) recipe.why = extra.why;
 }
+
+BY_NAME.clear();
+for (const recipe of RECIPES) {
+  const named = nameIndex(recipe.name);
+  if (named && !BY_NAME.has(named)) BY_NAME.set(named, recipe);
+}
+
+function aliasName(alias: string, formula: string): void {
+  const recipe = BY_FORMULA.get(formulaIndex(formula));
+  if (!recipe) return;
+  const named = nameIndex(alias);
+  if (named) BY_NAME.set(named, recipe);
+}
+
+aliasName("polvora", "KNO3CS");
+aliasName("polvora negra", "KNO3CS");
+aliasName("gunpowder", "KNO3CS");
+aliasName("napalm", "AlC8H18");
 
 function compositionDistance(inputs: MixtureInput[], stoich: Record<string, number>): number {
   const symbols = Object.keys(stoich);
@@ -733,7 +930,79 @@ function ratioHint(inputs: MixtureInput[], stoich: Record<string, number>): stri
   return `Este composto forma na proporção ${ratioText}. Os volumes atuais são ilustrativos.`;
 }
 
-export function identifyMixture(inputs: MixtureInput[]): MixtureOutcome {
+export type CompoundInfo = {
+  formula: string;
+  name: string;
+  stoich: Record<string, number>;
+};
+
+export function lookupCompound(query: string): CompoundInfo | null {
+  const formulaKey = formulaIndex(query);
+  const byFormula = formulaKey ? BY_FORMULA.get(formulaKey) : undefined;
+  if (byFormula) {
+    return { formula: byFormula.formula, name: byFormula.name, stoich: { ...byFormula.stoich } };
+  }
+  const named = nameIndex(query);
+  const byName = named ? BY_NAME.get(named) : undefined;
+  if (byName) {
+    return { formula: byName.formula, name: byName.name, stoich: { ...byName.stoich } };
+  }
+  return null;
+}
+
+export type IdentifyContext = {
+  sourceFormulas?: string[];
+};
+
+function sourceIsTheProduct(sources: string[] | undefined, recipe: Recipe): boolean {
+  if (!sources || sources.length !== 1) return false;
+  const idx = formulaIndex(sources[0]);
+  return (
+    idx === formulaIndex(recipe.formula) ||
+    nameIndex(sources[0]) === nameIndex(recipe.name)
+  );
+}
+
+function hasFreeAlkaliMetal(sources: string[] | undefined, inputs: MixtureInput[]): boolean {
+  if (sources?.length) {
+    return sources.some((source) => ALKALI_METALS.has(formulaIndex(source)) || ALKALI_METALS.has(source));
+  }
+  return inputs.some((item) => ALKALI_METALS.has(item.symbol));
+}
+
+function isAlkaliHydroxide(recipe: Recipe): boolean {
+  return /^(Li|Na|K|Rb|Cs|Fr)OH$/.test(recipe.formula.replace(/[()]/g, ""));
+}
+
+function resolveEffect(
+  recipe: Recipe,
+  inputs: MixtureInput[],
+  sources?: string[],
+): { effect: MixtureEffect; why?: string } {
+  if (sourceIsTheProduct(sources, recipe)) {
+    if (recipe.effect === "ignite") return { effect: "none" };
+    return { effect: recipe.effect ?? "none", why: recipe.why };
+  }
+
+  if (isAlkaliHydroxide(recipe) && hasFreeAlkaliMetal(sources, inputs)) {
+    const metal = inputs.find((item) => ALKALI_METALS.has(item.symbol))?.symbol ?? "Na";
+    const metalName = ELEMENT_NAME[metal] ?? metal;
+    return {
+      effect: "explode",
+      why: `${metalName} (${metal}) reage com água e libera hidrogênio (H₂) mais muito calor. O gás inflama e explode. O produto químico é ${recipe.name}, mas o perigo está em jogar o metal na água — não no hidróxido já pronto.`,
+    };
+  }
+
+  if (recipe.effect && recipe.effect !== "none") {
+    return { effect: recipe.effect, why: recipe.why };
+  }
+  return { effect: "none" };
+}
+
+export function identifyMixture(
+  inputs: MixtureInput[],
+  context: IdentifyContext = {},
+): MixtureOutcome {
   const symbols = inputs.map((item) => item.symbol);
   const key = mixtureKey(symbols);
   const candidates = BY_KEY.get(key);
@@ -745,21 +1014,25 @@ export function identifyMixture(inputs: MixtureInput[]): MixtureOutcome {
       name: "Mistura",
       equation: list || "—",
       kind: "blend",
+      effect: "none",
       liquidColor: KIND_COLOR.blend,
       caption:
         "Os elementos se misturam, mas não há um composto ou liga clássica cadastrada para esta combinação.",
     };
   }
   const recipe = pickRecipe(candidates, inputs);
+  const resolved = resolveEffect(recipe, inputs, context.sourceFormulas);
   return {
     key,
     formula: recipe.formula,
     name: recipe.name,
     equation: recipe.equation,
     kind: recipe.kind,
+    effect: resolved.effect,
     liquidColor: recipe.liquidColor,
     caption: recipe.caption,
     ratioHint: ratioHint(inputs, recipe.stoich),
+    why: resolved.why,
   };
 }
 
