@@ -1,521 +1,671 @@
 # Quimix
 
-Laboratório virtual de química. O Quimix permite misturar elementos e compostos, ver o produto no béquer e acompanhar volumes, concentrações e logs — sem gastar reagente real.
+Laboratório virtual de química. O aluno ou o professor entra com conta JWT, monta uma mistura na bancada (pela tabela periódica ou por fórmula) e vê o produto no béquer — com volume, concentração, equação e, se a química for perigosa, a explicação do porquê.
 
-O projeto é um TCC: uma plataforma didática em microserviços, com frontend React e APIs FastAPI atrás de um gateway. A Fase 1 cobre autenticação JWT, simulação de misturas (volumes e concentração) e a bancada visual no navegador.
+Não é um jogo de explosões. O Quimix ensina o **produto real** da mistura. Explosão, chama, derretimento e gelo só aparecem quando a reação realmente exige. Pólvora no béquer é pólvora; TNT é um sólido; soda cáustica pronta não explode. Sódio metálico na água explode e vira hidróxido.
+
+Este repositório é a **Fase 1** de um TCC: frontend React, três APIs FastAPI (gateway, auth, simulação) e Postgres orquestrados por Docker Compose.
+
+---
 
 ## Sumário
 
-1. [O que o Quimix ensina](#o-que-o-quimix-ensina)
-2. [Arquitetura](#arquitetura)
-3. [Estrutura do repositório](#estrutura-do-repositório)
-4. [Stack](#stack)
-5. [Pré-requisitos](#pré-requisitos)
-6. [Subir o ambiente com Docker](#subir-o-ambiente-com-docker)
-7. [Rodar cada serviço localmente](#rodar-cada-serviço-localmente)
-8. [Variáveis de ambiente](#variáveis-de-ambiente)
-9. [Contas e papéis](#contas-e-papéis)
-10. [Frontend (`quimix-web`)](#frontend-quimix-web)
-11. [Motor de identificação de misturas](#motor-de-identificação-de-misturas)
-12. [Parser de fórmulas e unidades](#parser-de-fórmulas-e-unidades)
-13. [Auth Service](#auth-service)
-14. [Simulation Service](#simulation-service)
-15. [API Gateway](#api-gateway)
-16. [Contratos HTTP](#contratos-http)
-17. [Banco de dados](#banco-de-dados)
-18. [Segurança](#segurança)
-19. [Testes](#testes)
-20. [Fluxo de uma simulação](#fluxo-de-uma-simulação)
-21. [Próximas fases](#próximas-fases)
-22. [Autores](#autores)
+1. [Visão geral: o que o sistema faz](#1-visão-geral-o-que-o-sistema-faz)
+2. [O que usa (stack)](#2-o-que-usa-stack)
+3. [Arquitetura e fluxogramas](#3-arquitetura-e-fluxogramas)
+4. [Como o aluno usa o laboratório](#4-como-o-aluno-usa-o-laboratório)
+5. [Como uma simulação funciona por dentro](#5-como-uma-simulação-funciona-por-dentro)
+6. [Dois motores: visual no browser, números no servidor](#6-dois-motores-visual-no-browser-números-no-servidor)
+7. [Identificação química (produto × efeito)](#7-identificação-química-produto--efeito)
+8. [Parser de fórmulas e unidades](#8-parser-de-fórmulas-e-unidades)
+9. [Autenticação JWT](#9-autenticação-jwt)
+10. [API Gateway](#10-api-gateway)
+11. [Auth Service](#11-auth-service)
+12. [Simulation Service](#12-simulation-service)
+13. [Frontend, tela a tela](#13-frontend-tela-a-tela)
+14. [Béquer: animação e temas](#14-béquer-animação-e-temas)
+15. [Banco de dados](#15-banco-de-dados)
+16. [Contratos HTTP](#16-contratos-http)
+17. [Segurança](#17-segurança)
+18. [Infra Docker](#18-infra-docker)
+19. [Como subir e desenvolver](#19-como-subir-e-desenvolver)
+20. [Variáveis de ambiente](#20-variáveis-de-ambiente)
+21. [Testes](#21-testes)
+22. [Mapa de arquivos](#22-mapa-de-arquivos)
+23. [Próximas fases](#23-próximas-fases)
+24. [Autores](#24-autores)
 
 ---
 
-## O que o Quimix ensina
+## 1. Visão geral: o que o sistema faz
 
-A bancada não é um “efeito especial”. O produto químico e o espetáculo visual são coisas diferentes.
+O Quimix resolve três problemas de aula:
 
-| Conceito | O que significa na tela |
-|----------|-------------------------|
-| **Produto** (`kind`) | O que a mistura *é*: água, ácido, base, sal, gás, óxido, liga, orgânico, mineral, pó, gelo ou mistura genérica. |
-| **Efeito** (`effect`) | O que acontece *só quando a química exige*: nada, explosão, derretimento do vidro, congelamento ou ignição. |
+1. **Misturar sem laboratório físico** — clicar em Na e Cl, ou digitar `NaCl`, e ver sal de cozinha.
+2. **Registrar o raciocínio** — o backend devolve moles, volume total e logs; o frontend nomeia o composto e mostra a equação.
+3. **Não mentir sobre o perigo** — o espetáculo visual só liga quando a química do contato é violenta, e sempre vem com texto didático.
 
-Regras didáticas:
+Papéis de usuário: `aluno`, `professor`, `admin`. Só quem está autenticado executa experimento. Cadastro público não cria admin.
 
-- Pólvora, TNT, RDX, PETN, ANFO, termite e napalm aparecem como substância (pó ou gel). Misturar não é o mesmo que detonar ou atear fogo.
-- Explosão, chama, derretimento e geada só ligam quando a reação realmente é violenta no contato (metal alcalino na água, HF atacando o vidro, compostos instáveis como nitroglicerina ou XeO₃, gases pirofóricos, reação fortemente endotérmica).
-- Se a mistura é perigosa, o béquer mostra o efeito **e** uma caixa `why` com a explicação.
-- Colocar o produto pronto (por exemplo NaOH, pólvora já como fórmula) não dispara o efeito da *formação*. Soda cáustica pronta não explode; sódio metálico na água explode e vira hidróxido.
-- Ácidos comuns (HCl, H₂SO₄) não derretem o béquer. Só o HF ataca a sílica do vidro.
-
-O backend de simulação **não** modela reação química: ele soma volumes e recalcula concentração (mol/L). O nome do composto, a equação, a cor, o tema e o efeito vêm do identificador no frontend.
+```mermaid
+flowchart LR
+  A[Aluno / professor] --> B[quimix-web<br/>React + Vite]
+  B -->|JSON + JWT| C[quimix-api-gateway<br/>FastAPI]
+  C --> D[quimix-auth-service<br/>JWT + bcrypt]
+  C --> E[quimix-simulation-service<br/>volumes e mol/L]
+  D --> F[(Postgres<br/>quimix_auth)]
+  E -.-> G[(Postgres<br/>quimix_simulation<br/>reservado)]
+```
 
 ---
 
-## Arquitetura
+## 2. O que usa (stack)
 
-Cada pasta de serviço é independente. `quimix-infra` só orquestra Docker, variáveis e documentação. Comunicação entre peças: HTTP/JSON. OpenAPI em `/docs` em cada API.
+Nada é “framework mágico”: cada peça tem um papel.
 
-```
-Navegador (quimix-web :5173)
-        │
-        │  JWT no header Authorization
-        ▼
-API Gateway (:8000)
-  CORS · rate limit · headers OWASP
-  valida access token nas rotas de simulação
-        │
-        ├── Auth Service (:8002)  → Postgres `quimix_auth`
-        └── Simulation Service (:8001)  → Postgres `quimix_simulation`
-              (catálogo seed em memória na Fase 1)
-```
+### Frontend (`quimix-web`)
 
-Padrão interno de cada microserviço Python: **Clean Architecture**
+| Peça | Versão / detalhe | Para que serve |
+|------|------------------|----------------|
+| React | 19 | UI da home, login, cadastro e bancada |
+| React DOM | 19 | Render no `#root` |
+| React Router | 7 | Rotas `/`, `/login`, `/register`, `/simulate` |
+| TypeScript | ~5.8 | Tipos de usuário, mistura, fórmula, elemento |
+| Vite | 6 | Dev server na 5173 e build |
+| Vitest | 3 | Testes do parser, identificador e cliente HTTP |
+| CSS próprio | `src/styles.css` | Temas do béquer, tabela periódica, auth |
+| localStorage | chaves `quimix_*` | Access token, refresh token e usuário |
+| Nginx | 1.27 (imagem Docker) | Serve o `dist` e faz fallback SPA (`try_files` → `index.html`) |
+| Node | 22 Alpine (build Docker) | `npm install` + `npm run build` |
 
-```
-domain        → modelos e regras puras
-application   → casos de uso
-infrastructure→ banco, catálogo, JWT, seed
-api           → rotas FastAPI e schemas Pydantic
-```
+Variável de build: `VITE_API_BASE_URL` (padrão `http://localhost:8000`). O browser **sempre** fala com o gateway, nunca com as portas 8001/8002.
 
-O navegador nunca fala direto com auth ou simulation em produção local via Compose: tudo passa pelo gateway em `http://localhost:8000`.
+### APIs Python
 
----
+| Peça | Versão | Onde entra |
+|------|--------|------------|
+| Python | 3.11+ local; **3.12-slim** nas imagens | Runtime |
+| FastAPI | 0.115.12 | Rotas, OpenAPI em `/docs` e `/redoc` |
+| Uvicorn | 0.34.0 | Servidor ASGI |
+| Pydantic | 2.11.1 | Validação de body (e-mail, volume, senha) |
+| pydantic-settings | 2.8.1 | Lê `.env` |
+| httpx | 0.28.1 | Gateway faz proxy; testes usam TestClient |
+| PyJWT | 2.10.1 | Assina e valida JWT HS256 |
+| bcrypt | 4.3.0 | Hash da senha (auth) |
+| SQLAlchemy | 2.0.39 | Tabela `users` (auth) |
+| psycopg | 3.2.6 binary | Driver Postgres do auth no Compose |
+| email-validator | 2.2.0 | `EmailStr` no cadastro/login |
+| pytest | 8.3.5 | Suítes de cada serviço |
+| pytest-asyncio | 0.25.3 | Testes async do gateway |
 
-## Estrutura do repositório
+### Infra
 
-```
-Quimix/
-├── README.md                          ← este guia
-├── quimix-infra/                      orquestração local (sem regra de negócio)
-│   ├── docker-compose.yml
-│   ├── .env.example
-│   ├── docker/postgres/init.sql       cria os bancos por serviço
-│   └── docs/
-│       ├── architecture.md
-│       ├── security.md
-│       └── test-plan.md
-├── quimix-api-gateway/                borda HTTP (CORS, JWT, proxy, rate limit)
-├── quimix-auth-service/               cadastro, login, refresh, /me
-├── quimix-simulation-service/         catálogo de reagentes e cálculo de mistura
-└── quimix-web/                        SPA React (bancada, tabela, béquer)
-```
+| Peça | Detalhe |
+|------|---------|
+| Docker Compose | Sobe Postgres + 3 APIs + web |
+| Postgres | 16 Alpine; porta **não** publicada no host |
+| Volume | `quimix_pg_data` |
+| Init SQL | Cria `quimix_auth`, `quimix_simulation`, `quimix_catalog`, `quimix_experiment`, `quimix_periodic` |
 
-Serviços previstos para fases seguintes (bancos já criados no Postgres, código ainda não existe):
+### O que cada serviço **não** usa
 
-- `quimix-catalog-service`
-- `quimix-experiment-service`
-- `quimix-periodic-table-service`
-
----
-
-## Stack
-
-| Camada | Tecnologia |
-|--------|------------|
-| Frontend | React 19, React Router 7, TypeScript, Vite 6, Vitest |
-| APIs | Python 3.11+, FastAPI, Pydantic v2, Uvicorn |
-| Auth | JWT (HS256), bcrypt, SQLAlchemy 2 + Postgres (ou SQLite em dev isolado) |
-| Gateway | FastAPI + httpx, CORS, rate limit em memória, headers OWASP |
-| Simulação | domínio puro (sem IoT); catálogo seed de elementos e compostos |
-| Infra | Docker Compose, Postgres 16 Alpine |
-| Testes | pytest (serviços), Vitest (web) |
+- Simulation **não** usa banco na Fase 1 (catálogo em memória).
+- Gateway **não** tem banco; estado do rate limit é um `deque` por IP na RAM.
+- Web **não** chama simulation/auth direto.
+- Nenhum serviço fala MQTT/IoT. A simulação é HTTP puro.
 
 ---
 
-## Pré-requisitos
+## 3. Arquitetura e fluxogramas
 
-Para o ambiente completo:
+### 3.1 Contexto do sistema
 
-- Docker e Docker Compose
-- (opcional) Node.js 20+ e Python 3.11+, se for rodar os serviços fora do Compose
+```mermaid
+flowchart TB
+  subgraph browser ["Navegador"]
+    UI["quimix-web :5173<br/>Home, Auth, Bancada"]
+    ID["identifyMixture + parseFormula<br/>roda só no cliente"]
+    UI --- ID
+  end
+
+  subgraph edge ["Borda"]
+    GW["quimix-api-gateway :8000<br/>CORS · rate limit · JWT · headers OWASP"]
+  end
+
+  subgraph services ["Microserviços"]
+    AUTH["quimix-auth-service :8002"]
+    SIM["quimix-simulation-service :8001"]
+  end
+
+  subgraph data ["Dados"]
+    PG[(Postgres 16)]
+    MEM["Catálogo seed<br/>em memória"]
+  end
+
+  UI -->|"VITE_API_BASE_URL"| GW
+  GW -->|"/api/v1/auth/*"| AUTH
+  GW -->|"/api/v1/reagents<br/>/api/v1/simulations/mixtures"| SIM
+  AUTH --> PG
+  SIM --> MEM
+  SIM -.-> PG
+```
+
+### 3.2 Camadas internas (Clean Architecture)
+
+Cada API Python segue o mesmo corte. O domínio não importa FastAPI.
+
+```mermaid
+flowchart TB
+  API["api/<br/>rotas FastAPI + schemas Pydantic"]
+  APP["application/<br/>casos de uso"]
+  DOM["domain/<br/>modelos, regras, erros"]
+  INF["infrastructure/<br/>SQLAlchemy, bcrypt, JWT, catálogo, seed"]
+
+  API --> APP
+  APP --> DOM
+  APP --> INF
+  INF --> DOM
+```
+
+| Serviço | `domain` | `application` | `infrastructure` | `api` |
+|---------|----------|---------------|------------------|-----|
+| Auth | `User`, `Role`, `UserRepository` | `AuthService` (register/login/refresh/me) | `database.py`, `security.py`, `seed.py` | `routes.py`, `schemas.py` |
+| Simulation | `Reagent`, `calculate_mixture` | `SimulateMixtureUseCase` | `reagent_catalog.py` | `routes.py`, `schemas.py` |
+| Gateway | — | — | `proxy.py`, `auth.py`, `middleware.py` | `main.py` |
+
+### 3.3 Subida do Compose (ordem real)
+
+O Postgres só aceita conexões depois do healthcheck. Auth e simulation esperam isso. O gateway espera os dois. A web espera o gateway.
+
+```mermaid
+flowchart LR
+  INIT["init.sql<br/>cria 5 databases"] --> PG[postgres]
+  PG -->|healthy| AUTH[auth-service]
+  PG -->|healthy| SIM[simulation-service]
+  AUTH --> GW[api-gateway]
+  SIM --> GW
+  GW --> WEB[web / nginx :80 → host :5173]
+```
 
 ---
 
-## Subir o ambiente com Docker
+## 4. Como o aluno usa o laboratório
 
-Na pasta de infra:
-
-```bash
-cd quimix-infra
-cp .env.example .env
-docker compose up --build
+```mermaid
+flowchart TD
+  HOME["/"] --> LOGIN{"Tem conta?"}
+  LOGIN -->|não| REG["/register<br/>nome, e-mail, senha, aluno ou professor"]
+  LOGIN -->|sim| IN["/login"]
+  REG --> SIM["/simulate"]
+  IN --> SIM
+  SIM --> MODO{"Como montar?"}
+  MODO -->|Elementos| TAB["Clica na tabela periódica<br/>ajusta mL / partes / mol"]
+  MODO -->|Fórmula| FORM["Digita H2O, NaCl, água…<br/>ou usa um preset"]
+  TAB --> GO["Simular"]
+  FORM --> GO
+  GO --> BEQ["Béquer anima + equacao + mol/L + logs"]
 ```
 
-URLs:
-
-| Serviço | URL |
-|---------|-----|
-| Web | http://localhost:5173 |
-| Gateway (OpenAPI) | http://localhost:8000/docs |
-| Simulation (OpenAPI) | http://localhost:8001/docs |
-| Auth (OpenAPI) | http://localhost:8002/docs |
-| Gateway health | http://localhost:8000/health |
-| Gateway info | http://localhost:8000/api/v1/gateway/info |
-
-O Postgres **não** publica a porta 5432 no host, para não brigar com um Postgres local. Ele só existe na rede interna do Compose.
-
-A imagem da web recebe `VITE_API_BASE_URL=http://localhost:8000` no build: o navegador chama o gateway no host, não o hostname interno do Compose.
-
-Parar:
-
-```bash
-docker compose down
-```
-
-Os dados do Postgres ficam no volume `quimix_pg_data`.
+Guarda de rota: `RequireAuth`. Sem usuário no contexto, `/simulate` redireciona para `/login` e guarda `state.from` para voltar depois.
 
 ---
 
-## Rodar cada serviço localmente
+## 5. Como uma simulação funciona por dentro
 
-Útil para desenvolvimento sem rebuild de imagem. O gateway precisa apontar para `localhost` (não para os hostnames do Compose).
+Este é o fluxo completo, do clique até o béquer. O ponto importante: **o servidor não nomeia o composto**. Ele só faz conta de volume e concentração. O nome, a cor, a equação e o efeito nascem no TypeScript.
 
-### Auth (porta 8002)
+```mermaid
+sequenceDiagram
+  actor Aluno
+  participant Bancada as SimulatePage
+  participant Ident as identifyMixture
+  participant API as client.ts
+  participant GW as API Gateway
+  participant Auth as Auth Service
+  participant Sim as Simulation Service
 
-```bash
-cd quimix-auth-service
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-cp .env.example .env
-uvicorn app.main:app --reload --port 8002
+  Aluno->>Bancada: escolhe elementos ou fórmulas e clica Simular
+  Bancada->>Ident: símbolos + quantidades + sourceFormulas
+  Ident-->>Bancada: kind, effect, nome, equação, why
+  Bancada->>API: simulateMixture([{el-H, 100}, {el-O, 50}])
+  API->>GW: POST /api/v1/simulations/mixtures<br/>Authorization: Bearer access
+  GW->>GW: CORS, rate limit, headers
+  GW->>GW: jwt.decode access type=access
+  alt token expirado
+    API->>GW: POST /api/v1/auth/refresh
+    GW->>Auth: refresh
+    Auth-->>API: novo access + refresh
+    API->>GW: repete POST mixtures
+  end
+  GW->>Sim: POST /api/v1/simulations/mixtures
+  Sim->>Sim: moles = mol/L × L<br/>C_final = moles / L_total
+  Sim-->>GW: total_volume_ml, solutos, logs, warnings
+  GW-->>Bancada: mesma resposta
+  Bancada->>Bancada: MixtureBeaker idle→pour→mix→reveal
 ```
 
-Sem `DATABASE_URL` de Postgres, o padrão é SQLite em `./quimix_auth.db`.
+Exemplo numérico (modo fórmula, `H2O`, 100 mL):
 
-### Simulation (porta 8001)
-
-```bash
-cd quimix-simulation-service
-python -m venv .venv
-pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8001
-```
-
-Não depende de banco na Fase 1: o catálogo é seed em memória.
-
-### Gateway (porta 8000)
-
-```bash
-cd quimix-api-gateway
-python -m venv .venv
-pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8000
-```
-
-Padrões: simulation em `http://localhost:8001`, auth em `http://localhost:8002`.
-
-### Web (porta 5173)
-
-```bash
-cd quimix-web
-npm install
-npm run dev
-```
-
-`VITE_API_BASE_URL` (padrão `http://localhost:8000`) precisa coincidir com o gateway.
-
-Scripts:
-
-| Comando | Função |
-|---------|--------|
-| `npm run dev` | Vite com hot reload |
-| `npm run build` | `tsc -b` + build de produção |
-| `npm run preview` | serve o build |
-| `npm test` | Vitest (uma passada) |
+1. Parser: H₂O → `{ H: 2, O: 1 }`.
+2. Expansão em mL: soma estequiométrica = 3; H recebe `100 × 2/3`, O recebe `100 × 1/3`.
+3. Identificador: chave `H+O`, proporção ~2:1 → água, `effect: none`.
+4. Backend: dois reagentes `el-H` e `el-O` a 1 mol/L; volume total aditivo; concentrações resultantes.
+5. Béquer: tema `theme-water`, sem cogumelo.
 
 ---
 
-## Variáveis de ambiente
+## 6. Dois motores: visual no browser, números no servidor
 
-Arquivo canônico do Compose: `quimix-infra/.env.example` (copiar para `.env`; **nunca** versionar o `.env`).
+| Pergunta | Quem responde | Arquivo |
+|----------|---------------|---------|
+| Que composto é esse? | Frontend | `mixtureOutcomes.ts` → `identifyMixture` |
+| Qual a equação? | Frontend | mesma receita |
+| Explode / derrete / congela / inflama? | Frontend | `resolveEffect` |
+| Por quê? (`why`) | Frontend | texto da receita |
+| Qual o volume total? | Backend | `mixture.py` → `calculate_mixture` |
+| Qual a concentração mol/L? | Backend | moles / litros |
+| Logs de adição | Backend | uma linha por componente |
+| “Não há modelagem de reação” | Backend, filtrado na UI | some quando o identificador já nomeou o produto |
 
-| Variável | Padrão | Uso |
-|----------|--------|-----|
-| `POSTGRES_USER` | `quimix` | Usuário do cluster |
-| `POSTGRES_PASSWORD` | `quimix_dev_change_me` | Senha de desenvolvimento |
-| `POSTGRES_DB` | `quimix` | Banco inicial do container |
-| `GATEWAY_PORT` | `8000` | Porta publicada do gateway |
-| `SIMULATION_PORT` | `8001` | Porta do simulation |
-| `AUTH_PORT` | `8002` | Porta do auth |
-| `WEB_PORT` | `5173` | Porta da web (nginx na imagem) |
-| `CORS_ORIGINS` | `http://localhost:5173` | Origens permitidas (lista separada por vírgula) |
-| `RATE_LIMIT_PER_MINUTE` | `120` | Teto por IP no gateway |
-| `JWT_SECRET` | valor de dev | **Mesmo segredo** no auth e no gateway |
-| `SEED_ADMIN_ENABLED` | `true` | Cria admin na subida do auth |
-| `SEED_ADMIN_EMAIL` | `admin@example.com` | E-mail do admin de testes |
-| `SEED_ADMIN_PASSWORD` | `Admin@12345` | Senha do admin de testes |
-| `SEED_ADMIN_NAME` | `Admin Quimix` | Nome exibido |
-| `SIMULATION_SERVICE_URL` | `http://simulation-service:8001` | Upstream interno (Compose) |
-| `AUTH_SERVICE_URL` | `http://auth-service:8002` | Upstream interno (Compose) |
+Por isso pólvora **parece** pólvora mesmo o POST devolvendo só “K, N, O, C, S com tais mol/L”. O aviso genérico do servidor é escondido quando `kind !== "blend"`.
 
-Auth, além disso (`quimix-auth-service/.env.example`):
+Conversão enviada ao backend (`amountToVolumeMl`):
 
-| Variável | Padrão | Uso |
-|----------|--------|-----|
-| `DATABASE_URL` | `sqlite:///./quimix_auth.db` | SQLAlchemy. No Compose: `postgresql+psycopg://…/quimix_auth` |
-| `JWT_ALGORITHM` | `HS256` | Algoritmo do token |
-| `ACCESS_TOKEN_MINUTES` | `30` | Vida do access token |
-| `REFRESH_TOKEN_DAYS` | `7` | Vida do refresh token |
+| Unidade na UI | Fórmula | Interpretação |
+|---------------|---------|---------------|
+| mL | `amount` | volume direto |
+| partes | `amount × 50` | cada parte vale 50 mL |
+| mol | `amount × 1000` | catálogo a 1 mol/L ⇒ 1 mol ≈ 1000 mL |
 
-Simulation no Compose usa `DATABASE_URL` com `postgresql+asyncpg://…/quimix_simulation` (preparado para a fase seguinte; o cálculo atual não persiste misturas).
-
-Em produção: trocar senhas, `JWT_SECRET` (mínimo 32 caracteres) e desligar o seed de admin.
+Ids de reagente: `elementReagentId("Na")` → `el-Na`.
 
 ---
 
-## Contas e papéis
-
-Papéis (`Role`): `aluno`, `professor`, `admin`.
-
-- Cadastro público (`POST /api/v1/auth/register`) aceita só `aluno` ou `professor`. Papel `admin` é recusado.
-- Senha: mínimo 8 caracteres.
-- E-mail único (normalizado em minúsculas).
-- Conta inativa não autentica.
-
-**Admin de testes** (criado na subida do auth se ainda não existir):
-
-| Campo | Valor |
-|-------|--------|
-| E-mail | `admin@example.com` |
-| Senha | `Admin@12345` |
-| Papel | `admin` |
-
-Tokens:
-
-- **Access**: `type=access`, claims `sub`, `email`, `role`, `iat`, `exp` (~30 min).
-- **Refresh**: `type=refresh`, claim `sub`, `exp` (~7 dias). Um refresh bem-sucedido devolve um *novo* par access + refresh.
-
-O frontend guarda `quimix_access_token`, `quimix_refresh_token` e `quimix_user` no `localStorage`. Em `401`, tenta refresh uma vez; se falhar, limpa a sessão e pede login de novo.
-
----
-
-## Frontend (`quimix-web`)
-
-SPA. Entrada: `src/main.tsx` (React StrictMode + BrowserRouter + `styles.css`). Rotas em `src/App.tsx`, envolvidas por `AuthProvider`.
-
-### Rotas
-
-| Caminho | Página | Auth |
-|---------|--------|------|
-| `/` | `HomePage` — hero, marca, atalho para simular ou criar conta | pública |
-| `/login` | `LoginPage` — e-mail e senha | pública |
-| `/register` | `RegisterPage` — nome, e-mail, senha, perfil aluno/professor | pública |
-| `/simulate` | `SimulatePage` — bancada | `RequireAuth` (sem usuário → `/login` com `state.from`) |
-| `*` | redireciona para `/` | — |
-
-### Páginas
-
-**Home** — atmosfera de laboratório (`LabAtmosphere`), logo animado (`QuimixMark`: béquer rachado com flash e estilhaços), três destaques (misturas visuais, tabela periódica, raciocínio registrado).
-
-**Login / cadastro** — mesmos painéis; após sucesso vão para `/simulate` (login respeita a rota de origem).
-
-**Bancada (`SimulatePage`)** — duas colunas: formulário à esquerda, resultado à direita.
-
-Modos da bancada (`MixMode`):
-
-- **Elementos**: clique na tabela periódica; cada célula vira um chip com quantidade.
-- **Fórmula**: campo de texto (Enter ou botão Adicionar) + presets (`H2O`, `NaCl`, `HCl`, `NaOH`, `H2SO4`, `HNO3`, `CO2`, `CH4`, `NH3`, `H2O2`, `CaCO3`, `Fe2O3`, `C2H5OH`, `C6H12O6`, `KOH`). Nomes comuns (`água`, `pólvora`, `napalm`) também resolvem. A tabela fica só leitura neste modo.
-
-Unidades (`AmountUnit`):
-
-| Unidade | Significado na UI | Conversão enviada ao backend |
-|---------|-------------------|------------------------------|
-| `mL` | volume | valor direto |
-| `partes` | proporção | × 50 mL |
-| `mol` | quantidade de matéria | × 1000 mL (catálogo a 1 mol/L) |
-
-Padrão de quantidade: 50 mL por elemento, 100 mL por fórmula; 1 nas outras unidades.
-
-Ao simular, a bancada achata a composição em símbolos (`el-Na`, `el-Cl`, …), chama `POST /api/v1/simulations/mixtures` com JWT e, em paralelo, identifica o produto no cliente (`identifyMixture`). O painel de resultado mostra:
-
-1. Béquer animado (`MixtureBeaker`)
-2. Volume equivalente e, no modo fórmula, os compostos usados
-3. Lista de solutos com concentração mol/L
-4. Avisos do backend (o aviso genérico “não há modelagem de reação” some quando o identificador já nomeou um composto)
-5. Logs passo a passo do cálculo
-
-### Componentes
-
-| Arquivo | Função |
-|---------|--------|
-| `QuimixMark.tsx` | Logo: um béquer que explode (flash, anéis, faíscas, gotas) |
-| `LabAtmosphere.tsx` | Fundo da home/auth |
-| `PeriodicTable.tsx` | Grade clássica (períodos 1–7, grupos 1–18, lantanídeos/actinídeos abaixo). Célula: número Z, símbolo e nome. Cores por categoria. |
-| `MixtureBeaker.tsx` | Cena do béquer: fases `idle` → `pour` → `mix` → `reveal`. Classes `theme-{kind}` e `effect-{effect}`. Grãos no pó, geada no gelo, cogumelo na explosão, rachaduras só no derretimento. Caixa didática `why` abaixo do frasco. |
-
-### Dados e API no cliente
-
-| Arquivo | Função |
-|---------|--------|
-| `src/data/periodicTable.ts` | 118 elementos, categorias, `ELEMENT_BY_SYMBOL`, `elementReagentId("Na")` → `el-Na` |
-| `src/data/formula.ts` | Parser de fórmulas, hidratos, unidades |
-| `src/data/mixtureOutcomes.ts` | Receitas, `identifyMixture`, `lookupCompound` |
-| `src/api/client.ts` | Cliente HTTP, sessão, refresh, `simulateMixture` |
-| `src/auth/AuthContext.tsx` | Estado do usuário, login/register/logout, revalidação com `/me` |
-| `src/auth/RequireAuth.tsx` | Guarda de rota |
-
-### Estilo
-
-`src/styles.css` concentra o visual da bancada: temas por `kind`, animações só no `effect` correspondente, tabela compacta, chips, painéis. Derretimento do vidro é escopado ao béquer em mistura/revelação (não pinta a página inteira).
-
----
-
-## Motor de identificação de misturas
+## 7. Identificação química (produto × efeito)
 
 Arquivo: `quimix-web/src/data/mixtureOutcomes.ts`.
 
-`identifyMixture(inputs, { sourceFormulas })` recebe os elementos da bancada (símbolo + quantidade) e, no modo fórmula, as fórmulas de origem.
+### 7.1 Dois eixos
 
-1. Monta a chave ordenada dos símbolos (`Na+Cl`, `H+O`, `C+K+N+O+S`, …).
-2. Busca receitas com exatamente esses elementos.
-3. Se houver várias (H₂O vs H₂O₂, CO vs CO₂), escolhe a de menor distância de proporção em relação à estequiometria.
-4. Resolve o **efeito** com `sourceFormulas`:
-   - produto digitado pronto + efeito `ignite` → vira `none` (MgO já formado não pega fogo de novo);
-   - hidróxido alcalino com metal livre na origem → `explode` + explicação do H₂ + calor;
-   - senão usa o efeito cadastrado na receita.
-5. Sem receita: `kind: blend`, sem efeito.
+```mermaid
+flowchart LR
+  MIX[Símbolos na bancada] --> KIND[kind: o que É]
+  MIX --> EFF[effect: o que ACONTECE]
 
-`lookupCompound` resolve fórmula (`H2O`, `H₂O`) ou nome normalizado sem acento (`agua`, `polvora`, `gunpowder`).
+  KIND --> K1[water acid base salt gas<br/>oxide alloy organic mineral<br/>powder ice blend]
+  EFF --> E1[none explode melt freeze ignite]
+```
 
-### Tipos de produto (`MixtureKind`)
+`kind` pinta o béquer (água azul, pó preto, gelo claro). `effect` dispara animação extra. Os dois são independentes: TNT é `powder` + `none`; nitroglicerina é `organic` + `explode`; HF é `acid` + `melt`.
 
-`water` · `acid` · `base` · `salt` · `gas` · `oxide` · `alloy` · `organic` · `mineral` · `powder` · `ice` · `blend`
+### 7.2 Algoritmo
 
-### Efeitos (`MixtureEffect`)
+```mermaid
+flowchart TD
+  IN["inputs: símbolo + quantidade<br/>sourceFormulas opcional"] --> KEY["mixtureKey: símbolos únicos ordenados<br/>ex. C+K+N+O+S"]
+  KEY --> HIT{"Existe receita com essa chave?"}
+  HIT -->|não| BLEND["kind = blend<br/>effect = none<br/>caption: combinação não cadastrada"]
+  HIT -->|sim| PICK["pickRecipe: menor distância<br/>à estequiometria"]
+  PICK --> RES["resolveEffect"]
+  RES --> OUT["MixtureOutcome:<br/>formula, name, equation,<br/>kind, effect, color, caption, why"]
+```
 
-| Efeito | Quando |
-|--------|--------|
-| `none` | Produto estável no béquer |
-| `explode` | Formação instável ou metal alcalino + água |
-| `melt` | HF (ataque à sílica do vidro) |
-| `freeze` | Reação fortemente endotérmica (ex.: Ba(OH)₂ + NH₄Cl) |
-| `ignite` | Formação pirofórica (PH₃, B₂H₆, SiH₄, combustão de Mg ou P) |
+Distância de proporção: compara a fração de volume de cada símbolo com a fração estequiométrica. Empate próximo (≤ 0.04) prefere a receita mais específica da lista. É assim que H:O = 2:1 vira água e 1:1 vira H₂O₂; C:O = 1:1 vira CO e 1:2 vira CO₂.
 
-### Como as receitas nascem
+### 7.3 Resolução do efeito
 
-- Para cada metal da tabela (exceto não-cátions como H, C, N, O, halogênios, gases nobres), gera sais/óxidos/hidróxidos/carbonatos/sulfatos/nitratos etc. a partir da carga típica do grupo, com variantes (Fe²⁺, Cu⁺, Sn²⁺, …).
-- Receitas explícitas por cima: água, ácidos, gases, orgânicos, minerais, ligas, compostos de gases nobres, pólvora, TNT, napalm, termite, nitroglicerina, mistura endotérmica, etc.
-- `SPECIAL` ajusta nomes didáticos (soda cáustica, ferrugem, leite de magnésia) e efeitos de formação (MgO / P₄O₁₀ inflamam *ao se formar*).
+```mermaid
+flowchart TD
+  R[Receita escolhida] --> SRC{"sourceFormulas tem<br/>exatamente o produto?"}
+  SRC -->|sim e effect era ignite| NONE1["effect = none<br/>MgO / P4O10 já prontos não pegam fogo"]
+  SRC -->|sim, outro efeito| KEEP["mantém effect da receita<br/>ex. HF ainda derrete"]
+  SRC -->|não| OH{"É Li/Na/K/Rb/Cs/Fr OH<br/>e há metal alcalino livre?"}
+  OH -->|sim| BOOM["effect = explode<br/>why: metal + água → H2 + calor"]
+  OH -->|não| DEF["usa effect cadastrado<br/>ou none"]
+```
 
-Exemplos de produto **sem** explosão ao misturar: pólvora (`KNO3CS` / alias `pólvora`), TNT, RDX, PETN, ANFO, termite, napalm, metano, etanol, H₂SO₄.
+Consequências didáticas:
 
-Exemplos **com** efeito: Na + H₂O (explode), HF (derrete vidro), nitroglicerina / XeO₃ / XeO₄ / Cl₂O₇ (explodem), PH₃ / silano / diborano (ignição), Ba(OH)₂ + NH₄Cl (congela).
+| Mistura | Produto | Efeito |
+|---------|---------|--------|
+| H + O ~ 2:1 | Água | nenhum |
+| NaCl / fórmula `NaCl` | Sal de cozinha | nenhum |
+| `KNO3CS`, `pólvora`, TNT, RDX, PETN, ANFO, termite | Pó | nenhum |
+| Napalm | Orgânico (gel) | nenhum |
+| Na (elemento) + água / H+O | Hidróxido | **explode** |
+| Fórmula `NaOH` sozinha | Soda cáustica | nenhum |
+| HF | Ácido fluorídrico | **derrete o vidro** |
+| HCl, H₂SO₄ | Ácido | nenhum (não ataca sílica) |
+| Nitroglicerina, XeO₃, XeO₄, Cl₂O₇ | composto instável | **explode** |
+| PH₃, SiH₄, B₂H₆, formação de MgO/P₄O₁₀ | gás/óxido | **ignite** |
+| Ba(OH)₂ + NH₄Cl | mistura endotérmica | **freeze** |
+
+### 7.4 De onde vêm as receitas
+
+1. **Geração iônica** — para cada metal da tabela (exceto não-cátions: H, C, N, O, halogênios, nobres, etc.) cria halogenetos, óxido, sulfeto, hidróxido, carbonato, sulfato, nitrato, fosfato… com a carga típica do grupo. Variantes extras: Fe²⁺, Cu⁺, Sn²⁺, Pb⁴⁺, etc.
+2. **Receitas explícitas** — água, peróxido, ácidos, gases, orgânicos, minerais, ligas (latão, bronze, inox), pólvora, TNT, napalm, termite, ANFO, compostos de xenônio.
+3. **SPECIAL** — nomes de aula (soda cáustica, ferrugem, leite de magnésia) e ignição na *formação* de MgO / P₄O₁₀.
+4. **Aliases** — `polvora`, `polvora negra`, `gunpowder` → `KNO3CS`; `napalm` → `AlC8H18`.
+
+`lookupCompound("água")` e `lookupCompound("H₂O")` encontram a mesma receita (normaliza acento, subscrito e pontuação).
+
+Presets da barra de fórmula: `H2O`, `NaCl`, `HCl`, `NaOH`, `H2SO4`, `HNO3`, `CO2`, `CH4`, `NH3`, `H2O2`, `CaCO3`, `Fe2O3`, `C2H5OH`, `C6H12O6`, `KOH`.
 
 ---
 
-## Parser de fórmulas e unidades
+## 8. Parser de fórmulas e unidades
 
 Arquivo: `quimix-web/src/data/formula.ts`.
 
-Aceita:
+```mermaid
+flowchart TD
+  RAW["texto: Ca(OH)2, H₂O, CuSO4·5H2O, água"] --> NORM["normalizeFormulaText:<br/>subscrito → dígito, · → ponto, tira espaço"]
+  NORM --> LOOK["lookupCompound"]
+  LOOK -->|hit| STOICH["usa stoich da receita"]
+  LOOK -->|miss| PARSE["parseHydrated"]
+  PARSE --> GRP["parseGroup: símbolo 1 ou 2 letras<br/>número opcional, parênteses"]
+  GRP --> DOT{"tem . hidrato?"}
+  DOT -->|sim| ADD["soma o grupo × coeficiente"]
+  DOT -->|não| OUT["ParsedFormula"]
+```
 
-- Símbolos da tabela (`H2O`, `NaCl`, `Fe2O3`)
-- Parênteses (`Ca(OH)2`, `Al(C16H31O2)`)
-- Hidratos com ponto / `·` / `*` (`CuSO4.5H2O`)
-- Subscritos Unicode (`H₂O` → `H2O`)
+Aceita: `H2O`, `NaCl`, `Fe2O3`, `Ca(OH)2`, `CuSO4.5H2O` (também `·`, `*`). Rejeita parêntese solto e trecho que não é elemento da tabela (`KNOWN_SYMBOLS`).
 
-Rejeita parêntese desbalanceado e trecho que não é elemento.
+`expandFormula`:
 
-`expandFormula` espalha a quantidade pelos átomos: em mL, reparte o volume pela soma estequiométrica; em partes/mol, multiplica cada índice pela quantidade.
+- em **mL**, reparte o volume pela soma dos índices (`H2O` em 100 mL → H 66,67 / O 33,33);
+- em **partes** ou **mol**, multiplica cada índice pela quantidade (`1 mol de H2O` → 2 de H e 1 de O na conta interna).
 
----
-
-## Auth Service
-
-Pasta: `quimix-auth-service`. FastAPI, SQLAlchemy, bcrypt, PyJWT.
-
-Na subida: `init_db()` cria a tabela `users` e `seed_admin_user()` insere o admin se o seed estiver ligado.
-
-### Modelo `User`
-
-`id` (UUID string), `email`, `full_name`, `role`, `password_hash`, `created_at`, `is_active`.
-
-### Rotas
-
-Prefixo `/api/v1/auth`.
-
-| Método | Caminho | Auth | Resposta |
-|--------|---------|------|----------|
-| POST | `/register` | não | `201` + tokens + user |
-| POST | `/login` | não | tokens + user |
-| POST | `/refresh` | body com `refresh_token` | novo par de tokens + user |
-| GET | `/me` | Bearer access | user |
-| GET | `/health` | não | `{ status, service }` |
-
-Erros típicos: e-mail já cadastrado (`409`), senha curta / admin público (`400`), credenciais inválidas / token ruim (`401`).
+Quantidade padrão: 50 mL por elemento, 100 mL por fórmula; `1` nas outras unidades.
 
 ---
 
-## Simulation Service
+## 9. Autenticação JWT
 
-Pasta: `quimix-simulation-service`. **Não inclui IoT.** Motor de volumes e concentração.
+```mermaid
+sequenceDiagram
+  participant U as Usuário
+  participant W as Web
+  participant G as Gateway
+  participant A as Auth
+  participant DB as Postgres users
 
-Fórmula do domínio (`app/domain/mixture.py`):
+  U->>W: cadastro ou login
+  W->>G: POST /api/v1/auth/register ou /login
+  G->>A: proxy sem exigir JWT
+  A->>A: bcrypt / verifica senha
+  A->>DB: INSERT ou SELECT
+  A-->>W: access 30 min + refresh 7 dias + user
+  W->>W: localStorage quimix_access_token<br/>quimix_refresh_token, quimix_user
 
-1. Cada componente precisa de volume > 0 e concentração ≥ 0.
-2. Moles = concentração (mol/L) × volume (L).
-3. Volumes iguais ao mesmo `reagent_id` somam.
-4. Volume total é aditivo.
-5. Concentração resultante = moles / volume total (L), arredondada a 6 casas.
-6. Logs descrevem cada adição e cada concentração.
-7. Se há mais de um soluto, um aviso deixa claro que **não há modelagem de reação** nesta versão.
+  U->>W: Simular
+  W->>G: Bearer access
+  alt access válido
+    G->>G: type=access e sub presentes
+  else 401
+    W->>G: POST /api/v1/auth/refresh
+    G->>A: decode type=refresh
+    A-->>W: novo par de tokens
+    W->>G: repete o POST da mistura
+  else refresh falhou
+    W->>W: limpa sessão, pede login
+  end
+```
 
-Catálogo (`reagent_catalog.py`):
+Claims:
 
-- Compostos seed: `hcl-1m`, `naoh-1m`, `water` (água a 0 mol/L).
-- Elementos `el-{símbolo}` com concentração típica 1.0 mol/L (nobres e alguns metais pesados em 0.5). Símbolo desconhecido ainda simula com 1.0 mol/L, desde que o id seja `el-` + símbolo curto.
+| Token | `type` | Conteúdo | Vida |
+|-------|--------|----------|------|
+| Access | `access` | `sub` (id), `email`, `role`, `iat`, `exp` | 30 minutos |
+| Refresh | `refresh` | `sub`, `iat`, `exp` | 7 dias |
 
-A bancada envia só ids `el-H`, `el-O`, etc. Os compostos seed existem para demos/API direta.
+Algoritmo HS256. **O mesmo `JWT_SECRET` no auth e no gateway.** Leeway de 60 s nos dois lados (relógio dos containers). Refresh bem-sucedido **rotaciona** o par: devolve access novo e refresh novo.
 
-### Rotas
+Papéis:
 
-Prefixo `/api/v1`.
+- Cadastro: só `aluno` ou `professor`. `admin` no body → `400` “Cadastro público como admin não é permitido.”
+- Seed opcional na subida: `admin@example.com` / `Admin@12345` / papel `admin`, se `SEED_ADMIN_ENABLED=true` e o e-mail ainda não existe.
+- Usuário `is_active=false` não autentica.
 
-| Método | Caminho | Corpo | Resposta |
-|--------|---------|-------|----------|
-| GET | `/reagents` | — | lista do catálogo |
-| POST | `/simulations/mixtures` | `{ "components": [{ "reagent_id", "volume_ml" }] }` | volume total, solutos, logs, warnings |
+Senha: bcrypt (`bcrypt.hashpw` / `checkpw`), mínimo 8 caracteres, máximo 128. E-mail normalizado em minúsculas, único.
+
+Sessão no cliente (`src/api/client.ts`):
+
+- `authorizedFetch` manda Bearer; se a resposta é 401, chama `refreshSession` (uma promise compartilhada, sem tempestade de refresh) e tenta de novo.
+- Eventos `quimix-session-expired` e `quimix-session-refreshed` atualizam o `AuthContext` sem recarregar a página.
+- No boot, se há usuário no storage, `GET /api/v1/auth/me`; se falhar, tenta refresh.
+
+---
+
+## 10. API Gateway
+
+Única porta que o frontend conhece (`:8000`). Não calcula mistura e não grava usuário. Só filtra, autentica e encaminha.
+
+```mermaid
+flowchart TD
+  REQ[Pedido HTTP] --> CORS[CORSMiddleware<br/>origens da env]
+  CORS --> RL{path é /health /docs /redoc /openapi.json?}
+  RL -->|não| HIT["RateLimit: deque de timestamps por IP<br/>padrão 120 / minuto → 429"]
+  RL -->|sim| SEC
+  HIT --> SEC[SecurityHeadersMiddleware]
+  SEC --> ROTA{qual path?}
+
+  ROTA -->|POST /api/v1/auth/register login refresh| AUTH[proxy auth<br/>sem JWT]
+  ROTA -->|GET /api/v1/auth/me| AUTH2[proxy auth<br/>encaminha Authorization]
+  ROTA -->|GET reagents / POST mixtures| JWT["require_access_token<br/>Bearer + type=access"]
+  JWT --> SIM[proxy simulation]
+  ROTA -->|GET /health /gateway/info| LOCAL[resposta local]
+
+  AUTH --> HDR["só Content-Type e Accept"]
+  AUTH2 --> HDR2["+ Authorization"]
+  SIM --> HDR2
+```
+
+Allowlist anti-SSRF: o gateway **não** aceita um path arbitrário para “buscar qualquer URL”. Só estes destinos:
+
+| Método e path | Destino |
+|---------------|---------|
+| POST `/api/v1/auth/register` | auth `:8002` |
+| POST `/api/v1/auth/login` | auth |
+| POST `/api/v1/auth/refresh` | auth |
+| GET `/api/v1/auth/me` | auth |
+| GET `/api/v1/reagents` | simulation `:8001` |
+| POST `/api/v1/simulations/mixtures` | simulation |
+| GET `/health`, GET `/api/v1/gateway/info` | o próprio gateway |
+
+Headers OWASP em **toda** resposta:
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: no-referrer`
+- `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+
+Proxy: httpx timeout 30 s; falha de rede → `502`. Método fora da allowlist → `404`. CORS sem cookies (`allow_credentials=False`).
+
+---
+
+## 11. Auth Service
+
+Porta `8002`. Persistência em `quimix_auth.users`.
+
+Na subida (`app/main.py`): `init_db()` → `create_all` da tabela; `seed_admin_user()` se o seed estiver ligado.
+
+```mermaid
+flowchart LR
+  subgraph domain
+    U[User dataclass]
+    R[Role: aluno professor admin]
+    Repo[UserRepository ABC]
+  end
+  subgraph application
+    S[AuthService]
+  end
+  subgraph infrastructure
+    Row[UserRow SQLAlchemy]
+    Sec[hash / JWT]
+    Seed[seed admin]
+  end
+  S --> Repo
+  S --> Sec
+  Row -.-> Repo
+```
+
+Tabela `users`: `id` CHAR 36, `email` único, `full_name`, `role`, `password_hash`, `created_at` timezone, `is_active`.
+
+Rotas (`/api/v1/auth`):
+
+| Método | Path | Entrada | Saída |
+|--------|------|---------|-------|
+| POST | `/register` | e-mail, senha ≥ 8, nome 2–120, role | `201` tokens + user |
+| POST | `/login` | e-mail, senha | `200` tokens + user |
+| POST | `/refresh` | `{ refresh_token }` | novo par + user |
+| GET | `/me` | header Bearer access | user |
 | GET | `/health` | — | `{ status, service }` |
 
-Validação: 1–50 componentes, `volume_ml` > 0 e ≤ 100 000. Reagente inexistente → `400`.
+Erros: e-mail duplicado `409`; senha curta / admin público `400`; login ruim / token inválido `401`.
+
+Dev isolado sem Docker: `DATABASE_URL=sqlite:///./quimix_auth.db`.
 
 ---
 
-## API Gateway
+## 12. Simulation Service
 
-Pasta: `quimix-api-gateway`. Única porta que o frontend precisa conhecer.
+Porta `8001`. **Não modela reação química e não fala com IoT.** Só misturas volumétricas.
 
-O gateway **não** inventa regra de mistura. Ele:
+```mermaid
+flowchart TD
+  BODY["{ components: [{ reagent_id, volume_ml }] }"] --> UC[SimulateMixtureUseCase]
+  UC --> CAT["find_reagent: compostos seed<br/>ou el-Símbolo"]
+  CAT -->|não achou| E400[400 Reagente não encontrado]
+  CAT -->|achou| MIX["calculate_mixture"]
+  MIX --> V{"volume > 0?"}
+  V -->|não| E400b[400]
+  V -->|sim| MOL["moles += conc × volume_L<br/>volumes do mesmo id somam"]
+  MOL --> OUT["total_volume_ml<br/>solutes[].resulting_concentration_mol_l<br/>logs[] warnings[]"]
+```
 
-1. Aplica CORS (origens da env; métodos GET/POST/PUT/PATCH/DELETE/OPTIONS; headers `Content-Type`, `Accept`, `Authorization`; sem cookies).
-2. Aplica rate limit por IP (padrão 120/min). `/health`, `/docs`, `/openapi.json` e `/redoc` ficam de fora.
-3. Injeta headers OWASP em toda resposta.
-4. Só faz proxy para hosts internos conhecidos e para **listas fechadas de caminhos** (anti-SSRF).
-5. Exige Bearer **access** (`type=access`) em reagentes e simulações. Login/register/refresh passam sem JWT. `/me` encaminha o header `Authorization` ao auth.
+Conta:
 
-Forward: só `content-type`, `accept` e, quando preciso, `authorization`. Timeout httpx: 30 s. Upstream fora → `502`.
+```
+moles_i     = concentração_i (mol/L) × (volume_i_mL / 1000)
+V_total_mL  = soma dos volumes
+C_i_final   = moles_i / (V_total_mL / 1000)   → 6 casas
+```
 
-| Rota no gateway | Upstream | JWT no gateway |
-|-----------------|----------|----------------|
-| `GET /health` | local | não |
-| `GET /api/v1/gateway/info` | local (mostra URLs internas) | não |
-| `POST /api/v1/auth/register` | auth | não |
-| `POST /api/v1/auth/login` | auth | não |
-| `POST /api/v1/auth/refresh` | auth | não |
-| `GET /api/v1/auth/me` | auth | encaminha Bearer |
-| `GET /api/v1/reagents` | simulation | valida access |
-| `POST /api/v1/simulations/mixtures` | simulation | valida access |
+Se há mais de um `reagent_id` distinto, entra o warning de que os volumes são aditivos e **não há modelagem de reação**. A UI esconde essa frase quando o identificador já reconheceu um composto.
 
-`JWT_SECRET` e `JWT_ALGORITHM` **têm de ser iguais** aos do auth, senão a bancada autentica no auth e o gateway recusa a simulação.
+Catálogo seed:
+
+- Compostos: `hcl-1m` (HCl 1 mol/L), `naoh-1m` (NaOH 1 mol/L), `water` (H₂O 0 mol/L).
+- Elementos `el-H`, `el-Na`, … com 1.0 mol/L (nobres e alguns pesados em 0.5). Símbolo desconhecido com id `el-Xx` ainda simula a 1.0 mol/L.
+
+A bancada manda só `el-{símbolo}`. Os compostos seed existem para chamada direta na OpenAPI.
+
+Validação Pydantic: 1 a 50 componentes, `volume_ml` > 0 e ≤ 100 000.
 
 ---
 
-## Contratos HTTP
+## 13. Frontend, tela a tela
 
-Exemplos contra o gateway (`http://localhost:8000`).
+Entrada: `src/main.tsx` → `StrictMode` + `BrowserRouter` + `App` + `styles.css`.
+
+```mermaid
+flowchart TD
+  APP[App + AuthProvider] --> H["/ HomePage"]
+  APP --> L["/login LoginPage"]
+  APP --> R["/register RegisterPage"]
+  APP --> S["/simulate RequireAuth → SimulatePage"]
+  APP --> X["* → /"]
+```
+
+### Home (`HomePage`)
+
+Atmosfera (`LabAtmosphere`), marca (`QuimixMark`: um béquer rachado com flash, anéis e estilhaços), título, CTA “Entrar para simular” ou “Iniciar simulação”, três cards: misturas visuais, tabela periódica viva, raciocínio registrado.
+
+### Login / cadastro
+
+Mesmo painel visual. Cadastro escolhe perfil **Aluno** ou **Professor**. Depois do sucesso: navega para `/simulate` (login respeita `location.state.from`).
+
+### Bancada (`SimulatePage`)
+
+Duas colunas: `bench-panel` (form) e `result-panel` (béquer + números).
+
+Toolbar:
+
+- Abas **Elementos** / **Fórmula** (`role="tablist"`). Trocar o modo zera a bandeja.
+- Unidades **mL** / **partes** / **mol** (`role="radiogroup"`). Trocar a unidade reseta as quantidades para o default.
+
+Modo elementos: clique na célula adiciona/remove chip (símbolo colorido, nome, input de quantidade, ×).
+
+Modo fórmula: input + Adicionar + presets; a tabela periódica fica `interactive={false}` (classe `is-locked`) só para ver os átomos do composto. Cada chip mostra fórmula bonita (`H₂O`), nome e linha estequiométrica (`2 H + O`).
+
+Ações: Limpar, Simular (disabled sem item ou enquanto `submitting`).
+
+Resultado após o POST: volume equivalente, nota da unidade, lista de solutos mol/L, warnings filtrados, `<ol>` de logs. `sceneId` incrementa para remountar o béquer a cada simulação.
+
+### Tabela periódica (`PeriodicTable` + `periodicTable.ts`)
+
+118 elementos. Grade 7 períodos × 18 grupos; lantanídeos e actinídeos numa série abaixo. Cada célula: número Z, símbolo, nome em português. Cores por categoria (alcalinos, transições, halogênios, nobres, …). `ELEMENT_BY_SYMBOL` resolve o átomo na expansão da fórmula.
+
+---
+
+## 14. Béquer: animação e temas
+
+`MixtureBeaker` identifica de novo a mistura (com `sourceFormulas`) e encena.
+
+```mermaid
+stateDiagram-v2
+  [*] --> idle
+  idle --> pour: playing = true
+  pour --> mix: 560–900 ms conforme o efeito
+  mix --> reveal: 1280–2100 ms
+  idle --> reveal: prefers-reduced-motion
+  pour --> idle: playing = false
+  mix --> idle: playing = false
+  reveal --> idle: playing = false
+```
+
+Tempos: explosão é a mais curta (impacto); ignição no meio; melt/freeze um pouco mais longos; mistura “calma” (água, sal) leva ~2,1 s até revelar.
+
+Classes CSS: `theme-{kind}` + `effect-{effect}` + `is-idle|is-pour|is-mix|is-reveal`.
+
+| Efeito / kind | O que o CSS/SVG faz |
+|---------------|---------------------|
+| `effect-explode` | Flash, onda de choque, fogo, cogumelo de fumaça, estilhaços |
+| `effect-ignite` | Chamas e brasas |
+| `effect-melt` | Rachaduras no vidro (escopadas ao béquer, não à página) |
+| `effect-freeze` / `theme-ice` | Geada |
+| `theme-powder` | Grãos escuros |
+| `theme-water` / `gas` / `salt` / `alloy` / `organic` | glifo + cor `--product` |
+
+Gotas coloridas caem na fase `pour` (até 4 símbolos). Abaixo do frasco: status (“Os elementos caem…”, “A reação ficou violenta…”) e, se houver `why`, a caixa de explicação.
+
+Variáveis CSS injetadas: `--mix-a`, `--mix-b` (cores dos primeiros elementos) e `--product` (cor da receita).
+
+---
+
+## 15. Banco de dados
+
+Um cluster, vários databases (`quimix-infra/docker/postgres/init.sql`):
+
+| Database | Fase 1 |
+|----------|--------|
+| `quimix_auth` | Tabela `users` em uso |
+| `quimix_simulation` | Reservado (cálculo ainda é stateless) |
+| `quimix_catalog` | Próxima fase |
+| `quimix_experiment` | Próxima fase |
+| `quimix_periodic` | Próxima fase |
+
+O container **não** mapeia `5432:5432`, para não brigar com Postgres instalado na máquina. Healthcheck: `pg_isready`. Volume: `quimix_pg_data`.
+
+Auth no Compose: `postgresql+psycopg://quimix:…@postgres:5432/quimix_auth`.
+
+---
+
+## 16. Contratos HTTP
+
+Base: `http://localhost:8000`. OpenAPI: `/docs` em cada serviço (8000, 8001, 8002).
 
 ### Cadastro
 
@@ -531,7 +681,7 @@ Content-Type: application/json
 }
 ```
 
-Resposta `201`:
+`201`:
 
 ```json
 {
@@ -547,7 +697,7 @@ Resposta `201`:
 }
 ```
 
-### Login
+### Login (conta seed)
 
 ```http
 POST /api/v1/auth/login
@@ -556,73 +706,172 @@ Content-Type: application/json
 { "email": "admin@example.com", "password": "Admin@12345" }
 ```
 
-### Mistura (access token)
+### Quem sou eu
+
+```http
+GET /api/v1/auth/me
+Authorization: Bearer <access>
+```
+
+### Mistura
 
 ```http
 POST /api/v1/simulations/mixtures
-Authorization: Bearer <access_token>
+Authorization: Bearer <access>
 Content-Type: application/json
 
 {
   "components": [
-    { "reagent_id": "el-H", "volume_ml": 100 },
-    { "reagent_id": "el-O", "volume_ml": 50 }
+    { "reagent_id": "el-H", "volume_ml": 66.67 },
+    { "reagent_id": "el-O", "volume_ml": 33.33 }
   ]
 }
 ```
 
-Resposta `200`: `total_volume_ml`, `solutes[]` (`reagent_id`, `name`, `formula`, `resulting_concentration_mol_l`, `contributed_volume_ml`), `logs[]`, `warnings[]`.
+`200`: `total_volume_ml`, `solutes[]` (`reagent_id`, `name`, `formula`, `resulting_concentration_mol_l`, `contributed_volume_ml`), `logs[]`, `warnings[]`.
 
-Sem token: `401` com `Login obrigatório para executar experimentos.`
+Sem Bearer: `401` “Login obrigatório para executar experimentos.”
 
----
+`GET /api/v1/reagents` — lista seed (também exige JWT no gateway).
 
-## Banco de dados
-
-Um cluster Postgres 16; **um database por serviço** (`quimix-infra/docker/postgres/init.sql`):
-
-| Database | Uso atual |
-|----------|-----------|
-| `quimix_auth` | Tabela `users` (SQLAlchemy) |
-| `quimix_simulation` | Reservado (simulação ainda é stateless) |
-| `quimix_catalog` | Fase 2 |
-| `quimix_experiment` | Fase 2 |
-| `quimix_periodic` | Fase 2 |
-
-Healthcheck: `pg_isready`. Volume nomeado `quimix_pg_data`.
+`GET /api/v1/gateway/info` — nome, versão e URLs internas de simulation/auth.
 
 ---
 
-## Segurança
+## 17. Segurança
 
-Detalhes também em `quimix-infra/docs/security.md`. Baseline OWASP da Fase 1:
+Detalhe em `quimix-infra/docs/security.md`.
 
-| Risco | Mitigação no Quimix |
-|-------|---------------------|
-| Broken Access Control | JWT no gateway nas rotas de experimento; papéis no token; cadastro admin bloqueado |
-| Cryptographic Failures | bcrypt nas senhas; secrets em `.env`; JWT com expiração curta + refresh |
-| Injection | Pydantic na borda; SQLAlchemy parametrizado |
-| Insecure Design | Serviços separados; validação no gateway e no domínio |
-| Security Misconfiguration | Headers no gateway; docs só no ambiente de dev |
-| Identification / Auth Failures | Access 30 min + refresh 7 dias; refresh rotaciona o par |
-| SSRF | Proxy só para URLs internas e paths allowlist |
-| Logging | Sem senha nem token nos logs de aplicação |
+| Risco OWASP | No Quimix |
+|-------------|-----------|
+| Broken Access Control | Experimento só com JWT; admin não se cadastra sozinho |
+| Cryptographic Failures | bcrypt; secret no `.env`; access curto |
+| Injection | Pydantic + SQLAlchemy parametrizado |
+| Insecure Design | Três serviços; validação na borda e no domínio |
+| Security Misconfiguration | Headers no gateway |
+| Identification / Auth Failures | Access + refresh rotacionado |
+| SSRF | Allowlist de path e host interno |
+| Logging | Sem senha/token nos logs |
 
-Headers do gateway:
-
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `Referrer-Policy: no-referrer`
-- `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
-- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
-
-Leeway de 60 s na validação JWT (auth e gateway) para relógio entre containers.
+Em produção: trocar `POSTGRES_PASSWORD`, `JWT_SECRET` (≥ 32 caracteres) e desligar `SEED_ADMIN_ENABLED`. HTTPS fica para o deploy, não para o Compose local.
 
 ---
 
-## Testes
+## 18. Infra Docker
 
-Plano resumido em `quimix-infra/docs/test-plan.md`. Cada pasta roda a suíte isolada.
+`quimix-infra/docker-compose.yml`:
+
+| Serviço Compose | Imagem / build | Porta no host | Env principal |
+|-----------------|----------------|---------------|---------------|
+| `postgres` | postgres:16-alpine | nenhuma (só `expose 5432`) | user/senha/db |
+| `simulation-service` | `../quimix-simulation-service` Python 3.12 | 8001 | `DATABASE_URL` asyncpg (reservado) |
+| `auth-service` | `../quimix-auth-service` Python 3.12 | 8002 | Postgres + JWT + seed |
+| `api-gateway` | `../quimix-api-gateway` Python 3.12 | 8000 | CORS, rate limit, URLs internas, JWT |
+| `web` | Node 22 build → nginx 1.27 | 5173→80 | `VITE_API_BASE_URL=http://localhost:8000` no **build** |
+
+A web precisa de `localhost:8000` (visão do browser), não `http://api-gateway:8000` (visão Docker). Por isso o ARG é host-localhost mesmo dentro do Compose.
+
+Nginx da web: `try_files $uri $uri/ /index.html` para o React Router não 404 em `/simulate`.
+
+---
+
+## 19. Como subir e desenvolver
+
+### Ambiente completo
+
+```bash
+cd quimix-infra
+cp .env.example .env
+docker compose up --build
+```
+
+| O quê | URL |
+|-------|-----|
+| Laboratório | http://localhost:5173 |
+| Gateway / OpenAPI | http://localhost:8000/docs |
+| Simulation / OpenAPI | http://localhost:8001/docs |
+| Auth / OpenAPI | http://localhost:8002/docs |
+
+Parar: `docker compose down`. Volume do Postgres permanece até `docker compose down -v`.
+
+### Serviços um a um (hot reload)
+
+Auth `8002`:
+
+```bash
+cd quimix-auth-service
+python -m venv .venv
+pip install -e ".[dev]"
+uvicorn app.main:app --reload --port 8002
+```
+
+Simulation `8001`:
+
+```bash
+cd quimix-simulation-service
+python -m venv .venv
+pip install -e ".[dev]"
+uvicorn app.main:app --reload --port 8001
+```
+
+Gateway `8000` (aponta para localhost:8001 e :8002):
+
+```bash
+cd quimix-api-gateway
+python -m venv .venv
+pip install -e ".[dev]"
+uvicorn app.main:app --reload --port 8000
+```
+
+Web `5173`:
+
+```bash
+cd quimix-web
+npm install
+npm run dev
+```
+
+| Script web | Função |
+|------------|--------|
+| `npm run dev` | Vite, host `true`, porta 5173 |
+| `npm run build` | `tsc -b` + Vite production |
+| `npm run preview` | serve o `dist` |
+| `npm test` | Vitest uma passada |
+
+---
+
+## 20. Variáveis de ambiente
+
+Copiar `quimix-infra/.env.example` → `.env`. **Não versionar `.env`.**
+
+| Variável | Padrão | Quem lê |
+|----------|--------|---------|
+| `POSTGRES_USER` | `quimix` | Postgres, URLs dos serviços |
+| `POSTGRES_PASSWORD` | `quimix_dev_change_me` | idem |
+| `POSTGRES_DB` | `quimix` | banco inicial do container |
+| `GATEWAY_PORT` | `8000` | publish |
+| `SIMULATION_PORT` | `8001` | publish |
+| `AUTH_PORT` | `8002` | publish |
+| `WEB_PORT` | `5173` | publish nginx |
+| `CORS_ORIGINS` | `http://localhost:5173` | gateway (lista com vírgula) |
+| `RATE_LIMIT_PER_MINUTE` | `120` | gateway |
+| `JWT_SECRET` | string de dev | **auth e gateway iguais** |
+| `SEED_ADMIN_ENABLED` | `true` | auth |
+| `SEED_ADMIN_EMAIL` | `admin@example.com` | auth |
+| `SEED_ADMIN_PASSWORD` | `Admin@12345` | auth |
+| `SEED_ADMIN_NAME` | `Admin Quimix` | auth |
+| `SIMULATION_SERVICE_URL` | `http://simulation-service:8001` | gateway no Compose |
+| `AUTH_SERVICE_URL` | `http://auth-service:8002` | gateway no Compose |
+
+Auth extra: `DATABASE_URL`, `JWT_ALGORITHM=HS256`, `ACCESS_TOKEN_MINUTES=30`, `REFRESH_TOKEN_DAYS=7`.
+
+Web extra: `VITE_API_BASE_URL` (build-time).
+
+---
+
+## 21. Testes
+
+Plano em `quimix-infra/docs/test-plan.md`. Cada pasta é isolada.
 
 ```bash
 cd quimix-auth-service && python -m pytest -q
@@ -631,57 +880,77 @@ cd quimix-api-gateway && python -m pytest -q
 cd quimix-web && npm test
 ```
 
-| Pasta | Ferramenta | O que cobre |
-|-------|------------|-------------|
-| `quimix-auth-service/tests/unit` | pytest | hash/verify de senha, JWT access vs refresh |
-| `quimix-auth-service/tests/integration` | pytest + httpx | register, login, me, bloqueio de admin público |
-| `quimix-simulation-service/tests/unit` | pytest | volumes aditivos, moles, erros de volume |
-| `quimix-simulation-service/tests/integration` | pytest | `/reagents`, `/simulations/mixtures` |
-| `quimix-api-gateway/tests` | pytest | proxy, 401 sem token, headers, rate limit |
-| `quimix-web/src/data/formula.test.ts` | Vitest | parser, hidratos, unidades |
-| `quimix-web/src/data/mixtureOutcomes.test.ts` | Vitest | água, pólvora como pó, HF derrete, H₂SO₄ não, Na+água explode, NaOH fonte não explode, napalm orgânico |
-| `quimix-web/src/api/client.test.ts` | Vitest | formatação de concentração / cliente |
+| Arquivo | O que prova |
+|---------|-------------|
+| `quimix-auth-service/tests/unit/test_security.py` | bcrypt e JWT access ≠ refresh |
+| `quimix-auth-service/tests/integration/test_auth_api.py` | register, login, me, 409 duplicado, bloqueio de admin |
+| `quimix-simulation-service/tests/unit/test_mixture.py` | moles, volume aditivo, volume inválido |
+| `quimix-simulation-service/tests/integration/test_api.py` | HTTP de reagentes e misturas |
+| `quimix-api-gateway/tests/test_gateway.py` | proxy, 401, headers, rate limit |
+| `quimix-web/src/data/formula.test.ts` | parser, hidrato, unidades |
+| `quimix-web/src/data/mixtureOutcomes.test.ts` | água, CO/CO₂, pólvora como pó, HF melt, H₂SO₄ sem melt, Na+água explode, NaOH fonte sem explode, napalm orgânico |
+| `quimix-web/src/api/client.test.ts` | `formatConcentration` e retry após refresh |
 
-Critério de aceite da auth: registro aluno/professor, login devolve access + refresh, `/me` exige Bearer, rotas de auth acessíveis pelo gateway.
-
----
-
-## Fluxo de uma simulação
-
-Exemplo: aluno monta **H₂O** no modo fórmula, 100 mL.
-
-1. `lookupCompound("H2O")` (ou `parseFormula`) → composição H:2, O:1.
-2. A bancada expande para equivalentes de H e O e mostra a tabela só como referência.
-3. `identifyMixture` com `sourceFormulas: ["H2O"]` → água, efeito `none`, cor azul.
-4. Submit chama o gateway com `el-H` e `el-O` e o Bearer.
-5. Gateway valida o access JWT e encaminha ao simulation.
-6. Simulation devolve volume 150 mL equivalentes (proporção 2:1 em 100 mL de fórmula) e as concentrações.
-7. O béquer anima vazão → mistura → revelação da água. Sem explosão. Equação `2 H + O → H₂O` e caption didática.
-
-Exemplo perigoso: modo elementos, **Na** + **O** + **H** na proporção de NaOH, com o metal na bancada → produto hidróxido, efeito `explode`, texto explicando o H₂ e o calor. Se a origem for a fórmula `NaOH`, o mesmo produto aparece **sem** explosão.
+Aceite auth: aluno/professor cadastram; login devolve access+refresh; `/me` exige Bearer; o gateway expõe as rotas de auth.
 
 ---
 
-## Próximas fases
+## 22. Mapa de arquivos
 
-Já desenhadas na infra, ainda sem código de serviço:
+```
+Quimix/
+├── README.md
+├── quimix-infra/
+│   ├── docker-compose.yml
+│   ├── .env.example
+│   ├── docker/postgres/init.sql
+│   └── docs/architecture.md, security.md, test-plan.md
+├── quimix-api-gateway/
+│   ├── app/main.py, config.py, proxy.py, auth.py, middleware.py
+│   ├── tests/test_gateway.py
+│   └── Dockerfile
+├── quimix-auth-service/
+│   ├── app/domain/models.py, repositories.py
+│   ├── app/application/auth_service.py
+│   ├── app/infrastructure/database.py, security.py, seed.py
+│   ├── app/api/routes.py, schemas.py
+│   ├── tests/unit, tests/integration
+│   └── Dockerfile
+├── quimix-simulation-service/
+│   ├── app/domain/mixture.py, models.py
+│   ├── app/application/simulate_mixture.py
+│   ├── app/infrastructure/reagent_catalog.py
+│   ├── app/api/routes.py, schemas.py
+│   ├── tests/unit, tests/integration
+│   └── Dockerfile
+└── quimix-web/
+    ├── src/main.tsx, App.tsx, styles.css
+    ├── src/pages/HomePage, LoginPage, RegisterPage, SimulatePage
+    ├── src/components/MixtureBeaker, PeriodicTable, QuimixMark, LabAtmosphere
+    ├── src/data/mixtureOutcomes.ts, formula.ts, periodicTable.ts
+    ├── src/api/client.ts
+    ├── src/auth/AuthContext.tsx, RequireAuth.tsx
+    ├── nginx.conf, Dockerfile, vite.config.ts
+    └── testes *.test.ts ao lado do código
+```
 
-- Catálogo persistente de reagentes (hoje o seed vive no simulation)
-- Histórico de experimentos por usuário
-- Serviço dedicado da tabela periódica
-- HTTPS e secrets reais em produção
-- Autorização mais fina por papel (turma, correção de relatório)
-
-Documentação complementar:
-
-- `quimix-infra/docs/architecture.md`
-- `quimix-infra/docs/security.md`
-- `quimix-infra/docs/test-plan.md`
-- README de cada pasta de serviço
+Documentação extra por pasta: `quimix-web/README.md`, `quimix-auth-service/README.md`, `quimix-api-gateway/README.md`, `quimix-simulation-service/README.md`, `quimix-infra/README.md`.
 
 ---
 
-## Autores
+## 23. Próximas fases
+
+Já há database vazio no Postgres para:
+
+- catálogo persistente de reagentes (hoje o seed vive no simulation);
+- histórico de experimentos por usuário;
+- serviço da tabela periódica.
+
+Fora isso, no deploy: HTTPS, secrets reais, autorização por turma/papel além do JWT binário “tem token / não tem”.
+
+---
+
+## 24. Autores
 
 - **Luana Zenha**
 - **Bruno Barral**
