@@ -259,3 +259,45 @@ def test_learn_progress_discovery_and_mission():
     own = next(item for item in aluno_list.json() if item["id"] == mission_id)
     assert own["attempts"] == []
     assert own["my_attempt"]["correct"] is True
+
+
+def test_starter_missions_are_ready_to_play():
+    aluno = _register("aluno-missoes@example.com", "aluno", "Bia Missao")
+    headers = {"Authorization": f"Bearer {aluno['access_token']}"}
+    listed = client.get("/api/v1/learn/missions", headers=headers)
+    assert listed.status_code == 200, listed.text
+    ids = [item["id"] for item in listed.json()]
+    assert ids[0] == "lab-agua"
+    assert "lab-sal-meio" in ids
+    assert "lab-tnt" in ids
+    assert ids.index("lab-agua") < ids.index("lab-tnt")
+
+    water = client.post(
+        "/api/v1/learn/missions/lab-agua/attempts",
+        headers=headers,
+        json={
+            "formula": "H2O",
+            "name": "Água",
+            "kind": "water",
+            "effect": "none",
+            "note": "Hidrogênio e oxigênio.",
+            "volume_ml": 100,
+            "solutes": [],
+        },
+    )
+    assert water.status_code == 200, water.text
+    assert water.json()["correct"] is True
+
+    wrong = client.post(
+        "/api/v1/learn/missions/lab-agua/attempts",
+        headers=headers,
+        json={
+            "formula": "NaCl",
+            "name": "Cloreto de sódio",
+            "kind": "salt",
+            "effect": "none",
+            "volume_ml": 100,
+            "solutes": [],
+        },
+    )
+    assert wrong.json()["correct"] is False

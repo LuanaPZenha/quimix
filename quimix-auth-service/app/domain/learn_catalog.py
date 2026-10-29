@@ -90,6 +90,96 @@ CHALLENGES: list[dict] = [
     },
 ]
 
+STARTER_MISSIONS: list[dict] = [
+    {
+        "id": "lab-agua",
+        "title": "Primeira gota",
+        "brief": "Encha o béquer de água. Vale a fórmula H2O ou os elementos H e O.",
+        "kind": "product",
+        "target_formula": "H2O",
+    },
+    {
+        "id": "lab-sal",
+        "title": "Sal de cozinha",
+        "brief": "Junte sódio e cloro e obtenha NaCl.",
+        "kind": "product",
+        "target_formula": "NaCl",
+    },
+    {
+        "id": "lab-sal-meio",
+        "title": "Meia concentração",
+        "brief": "Prepare NaCl com cerca de 100 mL e o sódio perto de 0,50 mol/L. Com as soluções a 1 mol/L, 50 mL de Na e 50 mL de Cl fecham a missão.",
+        "kind": "concentration",
+        "target_formula": "NaCl",
+        "target_mol_l": 0.5,
+        "target_volume_ml": 100,
+        "solute_symbol": "Na",
+    },
+    {
+        "id": "lab-co2",
+        "title": "Gás que sai",
+        "brief": "Obtenha gás carbônico, CO2. Carbono e oxigênio chegam lá.",
+        "kind": "product",
+        "target_formula": "CO2",
+    },
+    {
+        "id": "lab-hcl",
+        "title": "Ácido forte",
+        "brief": "Obtenha ácido clorídrico, HCl. Hidrogênio e cloro, ou a fórmula pronta.",
+        "kind": "product",
+        "target_formula": "HCl",
+    },
+    {
+        "id": "lab-ch4",
+        "title": "Gás do fogão",
+        "brief": "Obtenha metano, CH4.",
+        "kind": "product",
+        "target_formula": "CH4",
+    },
+    {
+        "id": "lab-nh3",
+        "title": "Cheiro de amônia",
+        "brief": "Obtenha amônia, NH3.",
+        "kind": "product",
+        "target_formula": "NH3",
+    },
+    {
+        "id": "lab-soda",
+        "title": "Soda quieta",
+        "brief": "Confira o mito da soda cáustica pronta: adicione a fórmula NaOH, sem sódio metálico solto.",
+        "kind": "myth",
+        "myth_id": "soda",
+    },
+    {
+        "id": "lab-sodio",
+        "title": "Metal na água",
+        "brief": "Confira o mito do sódio metálico. Junte Na, H e O pelos elementos, sem usar a fórmula NaOH pronta.",
+        "kind": "myth",
+        "myth_id": "sodio",
+    },
+    {
+        "id": "lab-ferrugem",
+        "title": "Ferrugem",
+        "brief": "Obtenha óxido de ferro, Fe2O3. A fórmula pronta funciona; pelos elementos, o ferro abre na segunda etapa da trilha.",
+        "kind": "product",
+        "target_formula": "Fe2O3",
+    },
+    {
+        "id": "lab-polvora",
+        "title": "Pólvora sem faísca",
+        "brief": "Confira o mito da pólvora negra. Monte salitre, carvão e enxofre: K, N, O, C e S, ou as fórmulas KNO3, C e S.",
+        "kind": "myth",
+        "myth_id": "polvora",
+    },
+    {
+        "id": "lab-tnt",
+        "title": "Sólido estável",
+        "brief": "Confira o mito do TNT. Adicione a fórmula C7H5N3O6 e veja o que o béquer realmente guarda.",
+        "kind": "myth",
+        "myth_id": "tnt",
+    },
+]
+
 MYTHS: list[dict] = [
     {
         "id": "soda",

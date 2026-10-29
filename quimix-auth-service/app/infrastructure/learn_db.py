@@ -5,6 +5,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.types import JSON
 
 from app.domain.learn_catalog import (
+    STARTER_MISSIONS,
     grade_mission,
     grade_prediction,
     matching_challenge_ids,
@@ -189,8 +190,46 @@ def record_discovery(session: Session, user: User, payload: dict) -> dict:
     }
 
 
+LAB_TEACHER_ID = "quimix"
+LAB_TEACHER_NAME = "Quimix"
+
+
+def ensure_starter_missions(session: Session) -> None:
+    changed = False
+    for spec in STARTER_MISSIONS:
+        if session.get(ClassMissionRow, spec["id"]) is not None:
+            continue
+        session.add(
+            ClassMissionRow(
+                id=spec["id"],
+                teacher_id=LAB_TEACHER_ID,
+                teacher_name=LAB_TEACHER_NAME,
+                title=spec["title"],
+                brief=spec["brief"],
+                kind=spec["kind"],
+                target_formula=spec.get("target_formula"),
+                target_mol_l=spec.get("target_mol_l"),
+                target_volume_ml=spec.get("target_volume_ml"),
+                solute_symbol=spec.get("solute_symbol"),
+                myth_id=spec.get("myth_id"),
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+        )
+        changed = True
+    if changed:
+        session.commit()
+
+
 def list_missions(session: Session, user: User) -> list[dict]:
-    missions = list(session.scalars(select(ClassMissionRow).order_by(ClassMissionRow.created_at.desc())))
+    ensure_starter_missions(session)
+    starter_ids = [item["id"] for item in STARTER_MISSIONS]
+    starter_set = set(starter_ids)
+    stored = list(session.scalars(select(ClassMissionRow)))
+    by_id = {row.id: row for row in stored}
+    missions = [by_id[item_id] for item_id in starter_ids if item_id in by_id]
+    extras = [row for row in stored if row.id not in starter_set]
+    extras.sort(key=lambda row: row.created_at, reverse=True)
+    missions.extend(extras)
     if not missions:
         return []
     mission_ids = [mission.id for mission in missions]
@@ -268,6 +307,7 @@ def add_mission(session: Session, row: ClassMissionRow) -> ClassMissionRow:
 
 
 def submit_attempt(session: Session, user: User, mission_id: str, payload: dict) -> dict | None:
+    ensure_starter_missions(session)
     mission = session.get(ClassMissionRow, mission_id)
     if mission is None:
         return None
