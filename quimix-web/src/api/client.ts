@@ -1,4 +1,6 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "");
+const API_BASE_URL =
+  configuredBase || (import.meta.env.DEV ? "http://localhost:8000" : "https://quimix-api.vercel.app");
 
 const ACCESS_KEY = "quimix_access_token";
 const REFRESH_KEY = "quimix_refresh_token";
@@ -143,9 +145,17 @@ function authHeaders(extra: Record<string, string> = {}): HeadersInit {
   };
 }
 
+async function fetchApi(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    throw new Error("Não foi possível conectar ao servidor. Tente de novo em instantes.");
+  }
+}
+
 async function authorizedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const extra = { ...(init.headers as Record<string, string> | undefined) };
-  const first = await fetch(url, { ...init, headers: authHeaders(extra) });
+  const first = await fetchApi(url, { ...init, headers: authHeaders(extra) });
   if (first.status !== 401) return first;
 
   const refreshed = await refreshSession();
@@ -153,7 +163,7 @@ async function authorizedFetch(url: string, init: RequestInit = {}): Promise<Res
     expireSession();
     throw new Error("Sessão expirada. Faça login novamente.");
   }
-  const retried = await fetch(url, { ...init, headers: authHeaders(extra) });
+  const retried = await fetchApi(url, { ...init, headers: authHeaders(extra) });
   if (retried.status === 401) {
     expireSession();
     throw new Error("Sessão expirada. Faça login novamente.");
@@ -167,7 +177,7 @@ export async function registerUser(input: {
   full_name: string;
   role: Role;
 }): Promise<AuthTokens> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
+  const response = await fetchApi(`${API_BASE_URL}/api/v1/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(input),
@@ -180,7 +190,7 @@ export async function loginUser(input: {
   email: string;
   password: string;
 }): Promise<AuthTokens> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+  const response = await fetchApi(`${API_BASE_URL}/api/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(input),

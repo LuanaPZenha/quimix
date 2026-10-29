@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 from app.domain.models import Role, User
@@ -31,11 +32,15 @@ def _connect_args(url: str) -> dict:
     return {}
 
 
-engine = create_engine(
-    settings.database_url,
-    future=True,
-    connect_args=_connect_args(settings.database_url),
-)
+_engine_kwargs: dict = {
+    "future": True,
+    "connect_args": _connect_args(settings.database_url),
+}
+if settings.database_url.startswith("postgresql"):
+    _engine_kwargs["poolclass"] = NullPool
+    _engine_kwargs["pool_pre_ping"] = True
+
+engine = create_engine(settings.database_url, **_engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 

@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -9,6 +10,9 @@ from app.infrastructure.security import hash_password
 
 def seed_admin_user() -> None:
     """Cria conta admin de testes se ainda não existir (idempotente)."""
+    # Na Vercel o seed fica desligado, para não publicar a senha de desenvolvimento.
+    if os.getenv("VERCEL") == "1" and os.getenv("SEED_ADMIN_ENABLED") is None:
+        return
     if not settings.seed_admin_enabled:
         return
 
