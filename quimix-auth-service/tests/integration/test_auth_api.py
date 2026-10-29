@@ -288,6 +288,26 @@ def test_starter_missions_are_ready_to_play():
     assert water.status_code == 200, water.text
     assert water.json()["correct"] is True
 
+    ch4 = next(item for item in listed.json() if item["id"] == "lab-ch4")
+    assert "CH4" not in ch4["brief"]
+    assert "metano" not in ch4["brief"].lower()
+    assert ch4["target_formula"] is None
+
+    fogao = client.post(
+        "/api/v1/learn/missions/lab-ch4/attempts",
+        headers=headers,
+        json={
+            "formula": "CH4",
+            "name": "Metano",
+            "kind": "gas",
+            "effect": "none",
+            "volume_ml": 80,
+            "solutes": [],
+        },
+    )
+    assert fogao.status_code == 200, fogao.text
+    assert fogao.json()["correct"] is True
+
     wrong = client.post(
         "/api/v1/learn/missions/lab-agua/attempts",
         headers=headers,

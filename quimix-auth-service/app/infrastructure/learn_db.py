@@ -194,28 +194,36 @@ LAB_TEACHER_ID = "quimix"
 LAB_TEACHER_NAME = "Quimix"
 
 
+def _same_answer(current: object, value: object) -> bool:
+    if isinstance(current, float) and isinstance(value, float):
+        return abs(current - value) < 1e-9
+    return current == value
+
+
 def ensure_starter_missions(session: Session) -> None:
     changed = False
     for spec in STARTER_MISSIONS:
-        if session.get(ClassMissionRow, spec["id"]) is not None:
+        fields = {
+            "teacher_id": LAB_TEACHER_ID,
+            "teacher_name": LAB_TEACHER_NAME,
+            "title": spec["title"],
+            "brief": spec["brief"],
+            "kind": spec["kind"],
+            "target_formula": spec.get("target_formula"),
+            "target_mol_l": spec.get("target_mol_l"),
+            "target_volume_ml": spec.get("target_volume_ml"),
+            "solute_symbol": spec.get("solute_symbol"),
+            "myth_id": spec.get("myth_id"),
+        }
+        row = session.get(ClassMissionRow, spec["id"])
+        if row is None:
+            session.add(ClassMissionRow(id=spec["id"], created_at=datetime(2026, 1, 1, tzinfo=UTC), **fields))
+            changed = True
             continue
-        session.add(
-            ClassMissionRow(
-                id=spec["id"],
-                teacher_id=LAB_TEACHER_ID,
-                teacher_name=LAB_TEACHER_NAME,
-                title=spec["title"],
-                brief=spec["brief"],
-                kind=spec["kind"],
-                target_formula=spec.get("target_formula"),
-                target_mol_l=spec.get("target_mol_l"),
-                target_volume_ml=spec.get("target_volume_ml"),
-                solute_symbol=spec.get("solute_symbol"),
-                myth_id=spec.get("myth_id"),
-                created_at=datetime(2026, 1, 1, tzinfo=UTC),
-            )
-        )
-        changed = True
+        for key, value in fields.items():
+            if not _same_answer(getattr(row, key), value):
+                setattr(row, key, value)
+                changed = True
     if changed:
         session.commit()
 
@@ -245,7 +253,7 @@ def list_missions(session: Session, user: User) -> list[dict]:
         mine = next((item for item in by_mission.get(mission.id, []) if item.student_id == user.id), None)
         visible = user.role == Role.ADMIN or mission.teacher_id == user.id
         attempt_rows = by_mission.get(mission.id, []) if visible else []
-        rows.append(_mission_payload(mission, mine, attempt_rows))
+        rows.append(_mission_payload(mission, mine, attempt_rows, hide_answer=user.role == Role.ALUNO))
     return rows
 
 
@@ -265,6 +273,8 @@ def _mission_payload(
     mission: ClassMissionRow,
     mine: MissionAttemptRow | None,
     attempts: list[MissionAttemptRow],
+    *,
+    hide_answer: bool = False,
 ) -> dict:
     return {
         "id": mission.id,
@@ -273,11 +283,11 @@ def _mission_payload(
         "title": mission.title,
         "brief": mission.brief,
         "kind": mission.kind,
-        "target_formula": mission.target_formula,
-        "target_mol_l": mission.target_mol_l,
-        "target_volume_ml": mission.target_volume_ml,
-        "solute_symbol": mission.solute_symbol,
-        "myth_id": mission.myth_id,
+        "target_formula": None if hide_answer else mission.target_formula,
+        "target_mol_l": None if hide_answer else mission.target_mol_l,
+        "target_volume_ml": None if hide_answer else mission.target_volume_ml,
+        "solute_symbol": None if hide_answer else mission.solute_symbol,
+        "myth_id": None if hide_answer else mission.myth_id,
         "created_at": mission.created_at.isoformat(),
         "my_attempt": _attempt_payload(mine) if mine else None,
         "attempts": [_attempt_payload(item) for item in attempts],

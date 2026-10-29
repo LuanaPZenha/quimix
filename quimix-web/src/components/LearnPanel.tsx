@@ -48,18 +48,6 @@ function feedbackLines(feedback: DiscoveryFeedback): string[] {
   return lines;
 }
 
-function missionGoal(mission: ClassMission, progress: LearnProgress | null): string {
-  if (mission.kind === "myth") {
-    const myth = progress?.myths.find((item) => item.id === mission.myth_id);
-    return myth?.claim ?? "Conferir um mito do laboratório.";
-  }
-  if (mission.kind === "concentration") {
-    const volume = mission.target_volume_ml ? ` em cerca de ${mission.target_volume_ml} mL` : "";
-    return `${mission.target_formula} com ${mission.solute_symbol} a ${mission.target_mol_l} mol/L${volume}.`;
-  }
-  return `Obter ${mission.target_formula}.`;
-}
-
 type Props = {
   tab: LearnTab;
   onTab: (tab: LearnTab) => void;
@@ -388,7 +376,6 @@ export function LabAside({
               <li key={mission.id} className="learn-card">
                 <h3>{mission.title}</h3>
                 <p>{mission.brief}</p>
-                <p>{missionGoal(mission, progress)}</p>
                 <p className="learn-meta">{mission.teacher_name}</p>
                 {mission.my_attempt ? (
                   <p className="learn-lesson">
