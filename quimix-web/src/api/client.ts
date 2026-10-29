@@ -1,5 +1,5 @@
 const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "");
-const API_BASE_URL =
+export const API_BASE_URL =
   configuredBase || (import.meta.env.DEV ? "http://localhost:8000" : "https://quimix-api.vercel.app");
 
 const ACCESS_KEY = "quimix_access_token";
@@ -50,7 +50,7 @@ export type MixtureResult = {
   warnings: string[];
 };
 
-async function parseError(response: Response): Promise<string> {
+export async function parseError(response: Response): Promise<string> {
   try {
     const data = await response.json();
     if (typeof data.detail === "string") return data.detail;
@@ -153,7 +153,7 @@ async function fetchApi(url: string, init: RequestInit): Promise<Response> {
   }
 }
 
-async function authorizedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+export async function authorizedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const extra = { ...(init.headers as Record<string, string> | undefined) };
   const first = await fetchApi(url, { ...init, headers: authHeaders(extra) });
   if (first.status !== 401) return first;

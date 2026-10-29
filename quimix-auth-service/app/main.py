@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api.learn_routes import router as learn_router
 from app.api.routes import router
 from app.config import settings
 from app.infrastructure.database import init_db
@@ -21,6 +22,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": settings.app_name}
 
     application.include_router(router)
+    application.include_router(learn_router)
     return application
 
 

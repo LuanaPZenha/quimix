@@ -41,6 +41,7 @@ auth_config = importlib.import_module("app.config")
 auth_db = importlib.import_module("app.infrastructure.database")
 auth_seed = importlib.import_module("app.infrastructure.seed")
 auth_router = auth_routes.router
+learn_router = auth_routes.learn_router
 JWT_SECRET = auth_config.settings.jwt_secret
 JWT_ALGORITHM = auth_config.settings.jwt_algorithm
 
@@ -115,6 +116,7 @@ def health() -> dict[str, str]:
 
 
 app.include_router(auth_router)
+app.include_router(learn_router)
 app.include_router(sim_router, dependencies=[Depends(require_access_token)])
 
 

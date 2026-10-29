@@ -89,6 +89,12 @@ def test_simulation_rejects_expired_token():
     assert "Sessão inválida" in response.json()["detail"]
 
 
+def test_learn_requires_login():
+    response = client.get("/api/v1/learn/progress")
+    assert response.status_code == 401
+    assert "Login obrigatório" in response.json()["detail"]
+
+
 def test_simulation_accepts_valid_token_shape():
     # Sem upstream real no teste unitário: token válido passa da auth e pode dar 502
     token = _make_access_token()

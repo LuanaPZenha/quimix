@@ -1,11 +1,13 @@
-import { FormEvent, KeyboardEvent, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   formatConcentration,
   simulateMixture,
   type MixtureResult,
 } from "../api/client";
+import { fetchProgress, recordDiscovery, type DiscoveryFeedback, type DiscoveryInput, type LearnProgress } from "../api/learn";
 import { useAuth } from "../auth/AuthContext";
+import { LabAside, type LearnTab } from "../components/LearnPanel";
 import { MixtureBeaker } from "../components/MixtureBeaker";
 import { PeriodicTable } from "../components/PeriodicTable";
 import { QuimixMark } from "../components/QuimixMark";
@@ -21,6 +23,7 @@ import {
   type AmountUnit,
   type MixMode,
 } from "../data/formula";
+import { EFFECT_OPTIONS, KIND_OPTIONS } from "../data/learnLabels";
 import {
   FORMULA_PRESETS,
   identifyMixture,
@@ -69,6 +72,38 @@ export function SimulatePage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MixtureResult | null>(null);
   const [sceneId, setSceneId] = useState(0);
+  const [predictionKind, setPredictionKind] = useState("");
+  const [predictionEffect, setPredictionEffect] = useState("");
+  const [progress, setProgress] = useState<LearnProgress | null>(null);
+  const [feedback, setFeedback] = useState<DiscoveryFeedback | null>(null);
+  const [learnError, setLearnError] = useState<string | null>(null);
+  const [learnTab, setLearnTab] = useState<LearnTab>("resultado");
+  const [labSnapshot, setLabSnapshot] = useState<DiscoveryInput | null>(null);
+
+  const allowedSymbols = useMemo(() => {
+    if (mode !== "elements" || !progress?.unlocked_symbols) return null;
+    return new Set(progress.unlocked_symbols);
+  }, [mode, progress]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchProgress()
+      .then((data) => {
+        if (!cancelled) setProgress(data);
+      })
+      .catch(() => {
+        if (!cancelled) setLearnError("O caderno não carregou. A bancada segue aberta.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!progress?.unlocked_symbols) return;
+    const open = new Set(progress.unlocked_symbols);
+    setElementItems((prev) => prev.filter((item) => open.has(item.element.symbol)));
+  }, [progress]);
 
   const flattened = useMemo<FlatItem[]>(() => {
     if (mode === "elements") {
@@ -159,6 +194,10 @@ export function SimulatePage() {
 
   function toggleElement(element: PeriodicElement) {
     if (mode !== "elements") return;
+    if (allowedSymbols && !allowedSymbols.has(element.symbol)) {
+      setError("Esse elemento abre na próxima etapa da trilha. Pela fórmula a bancada continua aberta.");
+      return;
+    }
     clearOutcome();
     setElementItems((prev) => {
       if (prev.some((item) => item.element.symbol === element.symbol)) {
@@ -231,6 +270,13 @@ export function SimulatePage() {
       return;
     }
 
+    const hasKind = predictionKind !== "";
+    const hasEffect = predictionEffect !== "";
+    if (hasKind !== hasEffect) {
+      setError("Escolha o tipo e o efeito, ou deixe os dois em branco.");
+      return;
+    }
+
     const components = flattened
       .map((item) => ({
         reagent_id: elementReagentId(item.element.symbol),
@@ -248,6 +294,32 @@ export function SimulatePage() {
       const data = await simulateMixture(components);
       setResult(data);
       setSceneId((id) => id + 1);
+      setLearnTab("resultado");
+      const snapshot: DiscoveryInput = {
+        formula: outcome.formula.slice(0, 80),
+        name: outcome.name.slice(0, 120),
+        equation: outcome.equation.slice(0, 240),
+        kind: outcome.kind,
+        effect: outcome.effect,
+        caption: outcome.caption.slice(0, 400),
+        prediction_kind: hasKind ? predictionKind : null,
+        prediction_effect: hasEffect ? predictionEffect : null,
+        volume_ml: data.total_volume_ml,
+        solutes: data.solutes.map((solute) => ({
+          formula: solute.formula,
+          resulting_concentration_mol_l: solute.resulting_concentration_mol_l,
+        })),
+      };
+      setLabSnapshot(snapshot);
+      try {
+        const saved = await recordDiscovery(snapshot);
+        setFeedback(saved);
+        setProgress(saved.progress);
+        setLearnError(null);
+      } catch (err) {
+        setFeedback(null);
+        setLearnError(err instanceof Error ? err.message : "O caderno não guardou esta simulação.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha na simulação");
     } finally {
@@ -333,6 +405,34 @@ export function SimulatePage() {
             </div>
           </div>
 
+          <div className="prediction-bar">
+            <label>
+              Antes de misturar, tipo
+              <select value={predictionKind} onChange={(event) => setPredictionKind(event.target.value)}>
+                <option value="">Sem palpite</option>
+                {KIND_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Efeito
+              <select
+                value={predictionEffect}
+                onChange={(event) => setPredictionEffect(event.target.value)}
+              >
+                <option value="">Sem palpite</option>
+                {EFFECT_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           {mode === "formula" ? (
             <div className="formula-composer">
               <div className="formula-bar">
@@ -379,6 +479,7 @@ export function SimulatePage() {
             selectedSymbols={selectedSymbols}
             onToggle={toggleElement}
             interactive={mode === "elements"}
+            allowedSymbols={allowedSymbols}
           />
 
           <div className="bench-dock">
@@ -506,7 +607,14 @@ export function SimulatePage() {
           </div>
         </form>
 
-        <aside className="panel result-panel">
+        <LabAside
+          tab={learnTab}
+          onTab={setLearnTab}
+          progress={progress}
+          feedback={feedback}
+          learnError={learnError}
+          snapshot={labSnapshot}
+        >
           <p className="eyebrow ink">Transformação</p>
           <h2>Resultado</h2>
           <MixtureBeaker
@@ -568,7 +676,7 @@ export function SimulatePage() {
               </ol>
             </>
           )}
-        </aside>
+        </LabAside>
       </section>
     </main>
   );

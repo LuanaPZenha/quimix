@@ -11,6 +11,7 @@ from app.api.schemas import (
 from app.application.auth_service import AuthService
 from app.domain.models import User
 from app.infrastructure.database import SqlAlchemyUserRepository, get_session
+from app.api.learn_routes import router as learn_router
 from app.infrastructure.security import AuthError
 
 router = APIRouter(prefix="/api/v1/auth")

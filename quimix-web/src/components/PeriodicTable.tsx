@@ -12,6 +12,7 @@ function ElementCell({
   selected,
   onToggle,
   interactive,
+  trailLocked = false,
   className = "",
   style,
 }: {
@@ -19,16 +20,21 @@ function ElementCell({
   selected: boolean;
   onToggle: (element: PeriodicElement) => void;
   interactive: boolean;
+  trailLocked?: boolean;
   className?: string;
   style?: CSSProperties;
 }) {
   return (
     <button
       type="button"
-      className={`pt-cell${selected ? " is-selected" : ""}${className ? ` ${className}` : ""}`}
+      className={`pt-cell${selected ? " is-selected" : ""}${trailLocked ? " is-trail-locked" : ""}${className ? ` ${className}` : ""}`}
       style={{ background: CATEGORY_COLORS[element.category], ...style }}
-      title={`${element.name} (${element.symbol})`}
-      disabled={!interactive}
+      title={
+        trailLocked
+          ? `${element.name} (${element.symbol}) abre numa etapa seguinte da trilha`
+          : `${element.name} (${element.symbol})`
+      }
+      disabled={!interactive || trailLocked}
       onClick={() => onToggle(element)}
     >
       <span className="pt-z">{element.z}</span>
@@ -42,6 +48,7 @@ type Props = {
   selectedSymbols: Set<string>;
   onToggle: (element: PeriodicElement) => void;
   interactive?: boolean;
+  allowedSymbols?: Set<string> | null;
 };
 
 const MAIN_PERIODS = [1, 2, 3, 4, 5, 6, 7];
@@ -57,7 +64,13 @@ function seriesElements(period: number): PeriodicElement[] {
   );
 }
 
-export function PeriodicTable({ selectedSymbols, onToggle, interactive = true }: Props) {
+export function PeriodicTable({
+  selectedSymbols,
+  onToggle,
+  interactive = true,
+  allowedSymbols = null,
+}: Props) {
+  const trailLocked = (symbol: string) => Boolean(allowedSymbols && !allowedSymbols.has(symbol));
   const categories = Object.keys(CATEGORY_LABELS) as ElementCategory[];
 
   return (
@@ -82,6 +95,7 @@ export function PeriodicTable({ selectedSymbols, onToggle, interactive = true }:
                 element={el}
                 selected={selected}
                 interactive={interactive}
+                trailLocked={trailLocked(el.symbol)}
                 onToggle={onToggle}
                 style={{ gridColumn: group, gridRow: period }}
               />
@@ -101,6 +115,7 @@ export function PeriodicTable({ selectedSymbols, onToggle, interactive = true }:
                 element={el}
                 selected={selected}
                 interactive={interactive}
+                trailLocked={trailLocked(el.symbol)}
                 onToggle={onToggle}
                 className="pt-series-cell"
               />
@@ -117,6 +132,7 @@ export function PeriodicTable({ selectedSymbols, onToggle, interactive = true }:
                 element={el}
                 selected={selected}
                 interactive={interactive}
+                trailLocked={trailLocked(el.symbol)}
                 onToggle={onToggle}
                 className="pt-series-cell"
               />

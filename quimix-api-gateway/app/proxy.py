@@ -127,6 +127,20 @@ async def auth_me(request: Request) -> Response:
     )
 
 
+@router.api_route("/api/v1/learn/{rest:path}", methods=["GET", "POST"])
+async def learn_forward(rest: str, request: Request) -> Response:
+    if not rest or ".." in rest or rest.startswith("/"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rota não encontrada")
+    require_access_token(request)
+    return await _proxy(
+        request,
+        base_url=settings.auth_service_url,
+        path=f"/api/v1/learn/{rest}",
+        allowed_methods={"GET", "POST"},
+        include_auth=True,
+    )
+
+
 @router.get("/api/v1/gateway/info")
 async def gateway_info() -> dict[str, Any]:
     return {
